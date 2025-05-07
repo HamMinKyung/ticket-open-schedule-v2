@@ -49,11 +49,12 @@ class Settings(BaseSettings):
             'base_url': 'https://ticket.melon.com',
             'list_endpoint': 'https://ticket.melon.com/csoon/ajax/listTicketOpen.htm',
             'Referer': 'https://ticket.melon.com/csoon/index.htm',
-            'user_agent': (
-                'Mozilla/5.0 (Windows NT 10.0; Win64; x64) '
-                'AppleWebKit/537.36 (KHTML, like Gecko) '
-                'Chrome/135.0.0.0 Safari/537.36'
-            ),
+            'user_agents': [
+                'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/135.0.0.0 Safari/537.36',
+                'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 Safari/605.1.15',
+                'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 Chrome/91.0.4472.114 Safari/537.36',
+                # 필요에 따라 추가…
+            ],
             'sale_patterns': [
                 ('선예매', r'선예매[:]?\s*(\d+년.+?\d{2}:\d{2})'),
                 ('티켓오픈', r'티켓오픈[:]?\s*(\d+년.+?\d{2}:\d{2})')

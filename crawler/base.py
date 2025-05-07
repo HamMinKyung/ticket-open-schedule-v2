@@ -29,17 +29,17 @@ class AsyncCrawlerBase(ABC):
                 timeout=self.timeout
         ) as session:
             items = await self._fetch_list(session)
-            # _fetch_detail이 List[TI] 또는 None 반환
             detail_results = await asyncio.gather(
-                *(self._fetch_detail(session, item) for item in items)
+                *(self._fetch_detail(session, item) for item in items),
+                return_exceptions=True
             )
 
-        # Flatten & filter out None/empty
         tickets: List[TicketInfo] = []
         for result in detail_results:
-            if not result:
+            if isinstance(result, Exception):
+                print("Detail fetch failed, skipping: ", result)
                 continue
-            # result이 list라면 extend, 단일 객체라면 append
+            # result가 list인지 단일인지에 따라 평탄화
             if isinstance(result, list):
                 tickets.extend(result)
             else:

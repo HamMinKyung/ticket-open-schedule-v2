@@ -9,16 +9,23 @@ from crawler.base import AsyncCrawlerBase
 from utils.config import settings
 from models.ticket import TicketInfo
 from utils.utils import normalize_date_string
+import random
 
 class MelonCrawler(AsyncCrawlerBase):
     def __init__(self, date_range: Tuple[datetime, datetime]):
         super().__init__(date_range)
         self.cfg = settings.CRAWLERS['melon']
-        self.headers = {
-            "Referer": self.cfg['Referer'],
-            "User-Agent": self.cfg['user_agent']
-        }
         self.list_url = self.cfg['list_endpoint']
+
+    def _get_headers(self) -> Dict[str, str]:
+        # 설정된 리스트에서 랜덤 추출
+        ua_list = self.cfg.get('user_agents')
+        return {
+            "Referer": self.cfg['Referer'],
+            "User-Agent": random.choice(ua_list)
+        }
+
+
 
     async def _fetch_list(self, session: aiohttp.ClientSession) -> List[Dict[str, Any]]:
         items: List[Dict[str, Any]] = []
@@ -30,7 +37,8 @@ class MelonCrawler(AsyncCrawlerBase):
                     "orderType": "2",
                     "pageIndex": str(page)
                 }
-                async with session.post(self.list_url, headers=self.headers, data=payload) as resp:
+                headers = self._get_headers()
+                async with session.post(self.list_url, headers=headers, data=payload) as resp:
                     resp.raise_for_status()
                     html = await resp.text()
                 soup = BeautifulSoup(html, 'html.parser')
@@ -74,7 +82,8 @@ class MelonCrawler(AsyncCrawlerBase):
         href       = item['title_tag']['href'].lstrip("./")
         detail_url = f"{cfg['base_url']}/csoon/{href}"
 
-        async with session.get(detail_url, headers=self.headers) as resp:
+        headers = self._get_headers()
+        async with session.get(detail_url, headers=headers) as resp:
             resp.raise_for_status()
             html = await resp.text()
         soup = BeautifulSoup(html, 'html.parser')

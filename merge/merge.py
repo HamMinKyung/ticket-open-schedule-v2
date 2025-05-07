@@ -12,7 +12,7 @@ def merge_ticket_sources(tickets: List[TicketInfo]) -> List[TicketInfo]:
         tk.providers.add(tk.source)
 
         # 2) title/open_datetime 기준 키 생성
-        key = (tk.title, tk.open_datetime)
+        key = (tk.title.strip(""), tk.open_datetime.strftime("%Y-%m-%d %H:%M"))
 
         if key in merged:
             # 이미 있으면 providers만 합친다
