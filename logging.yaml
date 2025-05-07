@@ -1,0 +1,29 @@
+version: 1
+disable_existing_loggers: False
+
+formatters:
+  standard:
+    format: "%(
+    sctime)s [%(levelname)s] %(name)s: %(message)s"
+
+handlers:
+  console:
+    class: logging.StreamHandler
+    level: INFO
+    formatter: standard
+    stream: ext://sys.stdout
+
+loggers:
+  crawler:
+    level: debug
+    handlers: [console]
+    propagate: no
+
+  notion_writer:
+    level: debug
+    handlers: [console]
+    propagate: no
+
+root:
+  level: debug
+  handlers: [console]
