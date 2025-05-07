@@ -11,8 +11,7 @@ from notion_writer.writer import NotionRepository
 
 def calc_date_range() -> Tuple[datetime, datetime]:
     today = datetime.now()
-    # start = today + timedelta(days=(7 - today.weekday()), hours=0, minutes=0)
-    start = today + timedelta(days=(-3 - today.weekday()), hours=0, minutes=0)
+    start = today + timedelta(days=(7 - today.weekday()), hours=0, minutes=0)
     end = start + timedelta(days=6, hours=23, minutes=59)
     return start, end
 
