@@ -103,7 +103,7 @@ class InterParkCrawler(AsyncCrawlerBase):
         tickets: List[TicketInfo] = []
         for open_type, open_dt in schedules:
             tickets.append(TicketInfo(
-                title         = item.get("title", "-"),     # 공연 제목
+                title         = item.get("title", "-").strip(),     # 공연 제목
                 open_datetime = open_dt,                # 오픈 일시
                 round_info    = round_info,             # 오픈 회차
                 cast          = cast,                   # 출연진

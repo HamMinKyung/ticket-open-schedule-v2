@@ -89,7 +89,7 @@ class MelonCrawler(AsyncCrawlerBase):
         soup = BeautifulSoup(html, 'html.parser')
 
         # 기본 정보 파싱
-        title       = soup.select_one("p.tit_consert").get_text(strip=True)
+        title       = soup.select_one("p.tit_consert").get_text(strip=True).strip()
         round_info, venue = self._parse_base_box(soup)
         cast        = self._parse_cast_info(soup)
         only_sale   = bool(soup.select_one(cfg['detail_selectors']['solo_icon']))
