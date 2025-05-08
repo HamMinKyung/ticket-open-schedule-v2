@@ -1,27 +1,30 @@
 # notion_db_writer.py
-
+import asyncio
+import logging
 from typing import Optional, List
 from notion_client import Client
 from utils.config import settings
 from models.ticket import TicketInfo
 
+
 class NotionRepository:
     """
     Notion API를 통한 데이터베이스 CRUD를 담당합니다.
     """
+
     def __init__(
             self,
             client: Optional[Client] = None,
             database_id: Optional[str] = None
     ):
-        self.client = client or Client(auth=settings.NOTION_TOKEN)
+        self.client = client or Client(auth=settings.NOTION_TOKEN) # log_level=logging.DEBUG
         self.database_id = database_id or settings.NOTION_DB_ID
 
     def _find_page(self, ticket: TicketInfo) -> Optional[dict]:
         """
         동일 제목 및 오픈일시의 페이지가 이미 존재하는지 조회합니다.
         """
-        local_dt = ticket.open_datetime.astimezone(settings.user_timezone).replace(tzinfo=None)
+        local_dt = ticket.open_datetime.astimezone(settings.user_timezone).replace(tzinfo=settings.DEFAULT_TIMEZONE)
         iso_date = local_dt.isoformat(timespec="seconds")
         response = self.client.databases.query(
             database_id=self.database_id,
@@ -43,7 +46,8 @@ class NotionRepository:
         """
         TicketInfo 모델을 Notion 페이지 속성(JSON)으로 변환합니다.
         """
-        iso_date = ticket.open_datetime.astimezone(settings.user_timezone).isoformat()
+        local_dt = ticket.open_datetime.astimezone(settings.user_timezone).replace(tzinfo=settings.DEFAULT_TIMEZONE)
+        iso_date = local_dt.isoformat(timespec="seconds")
         return {
             "공연 제목": {
                 "title": [{"type": "text", "text": {"content": ticket.title}}]
@@ -52,7 +56,7 @@ class NotionRepository:
                 "rich_text": [{"type": "text", "text": {"content": ticket.category}}]
             },
             "오픈 일시": {
-                "date": {"start": iso_date, "time_zone": str(settings.DEFAULT_TIMEZONE)}
+                "date": {"start": iso_date}
             },
             "오픈 회차": {
                 "rich_text": [{"type": "text", "text": {"content": ticket.round_info}}]
@@ -76,8 +80,9 @@ class NotionRepository:
         TicketInfo.content 딕셔너리를 Notion 블록 리스트로 변환합니다.
         긴 텍스트(value)는 2000자씩 잘라 여러 paragraph 블록으로 분할 삽입합니다.
         """
+
         def chunk_text(text: str, size: int = 2000) -> list[str]:
-            return [text[i : i + size] for i in range(0, len(text), size)]
+            return [text[i: i + size] for i in range(0, len(text), size)]
 
         children: list[dict] = []
         for key, value in content.items():
@@ -86,8 +91,7 @@ class NotionRepository:
                 "object": "block",
                 "type": "heading_2",
                 "heading_2": {
-                    "text": [{"type": "text", "text": {"content": key}}],
-                    "color": "default"
+                    "rich_text": [{"type": "text", "text": {"content": key}}]
                 }
             })
             # 본문(2000자 단위로 분할)
@@ -102,11 +106,10 @@ class NotionRepository:
                 })
         return children
 
-
     def upsert_ticket(self, ticket: TicketInfo) -> None:
         try:
             existing = self._find_page(ticket)
-            props    = self._build_properties(ticket)
+            props = self._build_properties(ticket)
             contents = self._build_contents(ticket.content)
 
             if existing:
@@ -155,11 +158,21 @@ class NotionRepository:
         except Exception as ex:
             print(f"❌ Notion 처리 실패: {ticket.title}", ex)
 
+    # def write_all(self, tickets: List[TicketInfo]) -> None:
+    #     """
+    #     다수의 티켓 정보를 순차적으로 처리합니다.
+    #     """
+    #     for ticket in tickets:
+    #         self.upsert_ticket(ticket)
 
+    async def write_all(self, tickets: List[TicketInfo]) -> None:
+        task= [
+            asyncio.to_thread(self.upsert_ticket, ticket)
+            for ticket in tickets
+        ]
 
-    def write_all(self, tickets: List[TicketInfo]) -> None:
-        """
-        다수의 티켓 정보를 순차적으로 처리합니다.
-        """
-        for ticket in tickets:
-            self.upsert_ticket(ticket)
+        result = await asyncio.gather(*task, return_exceptions=True)
+        for ticket, result in zip(tickets, result):
+            if isinstance(result, Exception):
+                logging.error(f"❌ 티켓 처리 실패: {ticket.title}", exc_info=result)
+

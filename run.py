@@ -11,8 +11,7 @@ from notion_writer.writer import NotionRepository
 
 def calc_date_range() -> Tuple[datetime, datetime]:
     today = datetime.now()
-    # start = today + timedelta(days=(7 - today.weekday()), hours=0, minutes=0)
-    start = today + timedelta(days=(-3 - today.weekday()), hours=0, minutes=0)
+    start = today + timedelta(days=(7 - today.weekday()), hours=0, minutes=0)
     end = start + timedelta(days=6, hours=23, minutes=59)
     return start, end
 
@@ -27,7 +26,7 @@ async def main():
     merged = merge_ticket_sources(all_tickets)
 
     repo = NotionRepository()
-    repo.write_all(merged)
+    await repo.write_all(merged)
 
     print("Crawling and writing finished.")
 
