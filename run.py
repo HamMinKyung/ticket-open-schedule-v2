@@ -13,6 +13,7 @@ def calc_date_range() -> Tuple[datetime, datetime]:
     today = datetime.now()
     start = today + timedelta(days=(7 - today.weekday()), hours=0, minutes=0)
     end = start + timedelta(days=6, hours=23, minutes=59)
+    print(f"실행 일자 {start} - {end}")
     return start, end
 
 
