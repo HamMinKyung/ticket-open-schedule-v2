@@ -102,13 +102,13 @@ class MelonCrawler(AsyncCrawlerBase):
             for label, od in self._parse_open_dates(soup):
                 if self.start <= od <= self.end:
                     tickets.append(TicketInfo(
-                        title          = title,
+                        title          = title.strip(),
                         open_datetime  = od.replace(tzinfo=settings.user_timezone),
                         round_info     = round_info,
                         cast           = cast,
                         detail_url     = detail_url,
-                        category       = item['genre'],
-                        open_type      = label,
+                        category       = item['genre'].strip(),
+                        open_type      = label.strip(),
                         venue          = venue,
                         providers      = {"멜론티켓"},
                         solo_sale      = only_sale,
@@ -118,13 +118,13 @@ class MelonCrawler(AsyncCrawlerBase):
         # “티켓오픈” 한 건만
         else:
             tickets.append(TicketInfo(
-                title          = title,
+                title          = title.strip(),
                 open_datetime  = item['open_date'].replace(tzinfo=settings.user_timezone),
                 round_info     = round_info,
                 cast           = cast,
                 detail_url     = detail_url,
-                category       = item['genre'],
-                open_type      = "티켓오픈",
+                category       = item['genre'].strip(),
+                open_type      = "티켓오픈".strip(),
                 venue          = venue,
                 providers      = {"멜론티켓"},
                 solo_sale      = only_sale,

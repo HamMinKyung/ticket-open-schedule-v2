@@ -108,9 +108,9 @@ class InterParkCrawler(AsyncCrawlerBase):
                 round_info    = round_info,             # 오픈 회차
                 cast          = cast,                   # 출연진
                 detail_url    = detail_url,                # 상세 링크
-                category      = item.get("goodsGenreStr", "-"), # 구분
-                open_type     = open_type,                  # 오픈 타입
-                venue         = venue,          # 공연 장소
+                category      = item.get("goodsGenreStr", "-").strip(), # 구분
+                open_type     = open_type.strip(),                  # 오픈 타입
+                venue         = venue.strip(),          # 공연 장소
                 providers     = {"인터파크"},   # 예매처
                 solo_sale     = solo_sale,      # 단독 판매
                 content       = content,        # 내용

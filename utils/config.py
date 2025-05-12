@@ -74,6 +74,16 @@ class Settings(BaseSettings):
                 'content_wrap': 'div.wrap_detailview_cont',
                 'solo_icon': 'span.ico_list1'
             }
+        },
+        'sejong_pac' : {
+             'base_url'  : "https://www.sejongpac.or.kr",
+            'list_endpoint' : "https://www.sejongpac.or.kr/portal/bbs/B0000049/list.do",
+            "params" : {
+                "menuNo" : "200440",
+                "pageIndex" : "1",
+            },
+            "pages" : [1, 2] ,
+
         }
     }
 
