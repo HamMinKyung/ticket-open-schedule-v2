@@ -91,9 +91,9 @@ class MelonCrawler(AsyncCrawlerBase):
         # 기본 정보 파싱
         title       = soup.select_one("p.tit_consert").get_text(strip=True).strip()
         round_info, venue = self._parse_base_box(soup)
-        cast        = self._parse_cast_info(soup)
         only_sale   = bool(soup.select_one(cfg['detail_selectors']['solo_icon']))
         content     = self._parse_content(soup)
+        cast        = self._parse_cast_info(soup, content.get("출연진", "-"))
 
         tickets: List[TicketInfo] = []
 
@@ -103,7 +103,7 @@ class MelonCrawler(AsyncCrawlerBase):
                 if self.start <= od <= self.end:
                     tickets.append(TicketInfo(
                         title          = title.strip(),
-                        open_datetime  = od.replace(tzinfo=settings.user_timezone),
+                        open_datetime  = od,
                         round_info     = round_info,
                         cast           = cast,
                         detail_url     = detail_url,
@@ -119,7 +119,7 @@ class MelonCrawler(AsyncCrawlerBase):
         else:
             tickets.append(TicketInfo(
                 title          = title.strip(),
-                open_datetime  = item['open_date'].replace(tzinfo=settings.user_timezone),
+                open_datetime  = item['open_date'],
                 round_info     = round_info,
                 cast           = cast,
                 detail_url     = detail_url,
@@ -134,7 +134,7 @@ class MelonCrawler(AsyncCrawlerBase):
 
         return tickets
 
-    def _parse_cast_info(self, soup: BeautifulSoup) -> str:
+    def _parse_cast_info(self, soup: BeautifulSoup, default_cast: str) -> str:
         info_box = soup.select_one("div.box_concert_info")
         if not info_box:
             return "-"
@@ -142,7 +142,7 @@ class MelonCrawler(AsyncCrawlerBase):
         lines: List[str] = []
         for span in info_box.select("span"):
             txt = span.get_text(strip=True)
-            if not found and "[캐스팅]" in txt:
+            if not found and ("[캐스팅]" in txt or "라 인 업" in txt):
                 found = True
                 continue
             if found:
@@ -159,7 +159,7 @@ class MelonCrawler(AsyncCrawlerBase):
                     lines.append(f"{label} - {rest.strip()}")
                 else:
                     lines.append(txt)
-        return ", ".join(lines) if lines else "-"
+        return ", ".join(lines) if lines else (default_cast if default_cast else "-")
 
     def _parse_base_box(self, soup: BeautifulSoup) -> Tuple[str, str]:
         base = soup.select_one("div.box_concert_time")
@@ -192,21 +192,57 @@ class MelonCrawler(AsyncCrawlerBase):
                 continue
         return results
 
-    def _parse_content(self, soup: BeautifulSoup) -> Dict[str,str]:
-        result: Dict[str,str] = {}
-        wrap = soup.find('div', class_='wrap_detailview_cont')
+    def _parse_content(self, soup: BeautifulSoup) -> Dict[str, str]:
+        result: Dict[str, str] = {}
+        wrap = soup.find('div', class_=self.cfg["detail_selectors"]["content_wrap"])
         if not wrap:
             return result
-        current = None
-        for elem in wrap.find_all(['p','div'], recursive=True):
-            if elem.name=='p' and 'tit_sub_float' in elem.get('class',[]):
-                current = elem.get_text(strip=True)
-                result[current] = ""
-            elif current:
-                txt = elem.get_text(separator="\n", strip=True)
-                if txt:
-                    result[current] = (
-                        result[current] + "\n" + txt
-                        if result[current] else txt
-                    )
+
+        # ✅ 기본정보: - 키 : 값 형식
+        info_box = wrap.select_one('.box_concert_time .data_txt')
+        if info_box:
+            lines = []
+            for p in info_box.find_all('p'):
+                text = p.get_text(strip=True)
+                if text and text.startswith("-"):
+                    lines.append(text)
+            if lines:
+                result["기본정보"] = "\n".join(lines)
+
+        # ✅ 공연소개: 공연소개 전체 텍스트 블럭
+        intro_box = wrap.select_one('.box_concert_info .concert_info_txt')
+        if intro_box:
+            intro_text = intro_box.get_text(separator="\n", strip=True)
+            if intro_text:
+                result["공연소개"] = intro_text
+
+        # ✅ 기획사 정보: 줄바꿈 포함 텍스트
+        agency_box = wrap.select_one('.box_agency .txt')
+        if agency_box:
+            agency_text = agency_box.get_text(separator="\n", strip=True)
+            if agency_text:
+                result["기획사 정보"] = agency_text
+
+        # 기본 출연진 블럭 (단일 구조 우선)
+        cast_tag = wrap.select_one('.box_artist_checking .singer')
+        if cast_tag:
+            result["출연진"] = cast_tag.get_text(strip=True)
+
+        # 복수 출연진이 존재하는 경우 (캐릭터 소개 이후)
+        if "출연진" not in result and intro_box:
+            found = False
+            cast_lines = []
+            for p in intro_box.find_all("p"):
+                text = p.get_text(strip=True)
+                if not text:
+                    continue
+                if "캐릭터 소개" in text:
+                    found = True
+                    continue
+                if found:
+                    cast_lines.append(text)
+            if cast_lines:
+                result["출연진"] = "\n".join(cast_lines)
+
         return result
+

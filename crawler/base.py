@@ -28,7 +28,12 @@ class AsyncCrawlerBase(ABC):
                 headers=self.headers,
                 timeout=self.timeout
         ) as session:
-            items = await self._fetch_list(session)
+            try:
+                items = await self._fetch_list(session)
+            except Exception as e:
+                print(f"[ERROR][{self.__class__.__name__}] List fetch failed: {type(e).__name__} - {e}")
+                items = []
+
             detail_results = await asyncio.gather(
                 *(self._fetch_detail(session, item) for item in items),
                 return_exceptions=True
@@ -37,7 +42,7 @@ class AsyncCrawlerBase(ABC):
         tickets: List[TicketInfo] = []
         for result in detail_results:
             if isinstance(result, Exception):
-                print("Detail fetch failed, skipping: ", result)
+                print(f"[ERROR][{self.__class__.__name__}] Detail fetch failed, skipping: {type(result).__name__} - {result}")
                 continue
             # result가 list인지 단일인지에 따라 평탄화
             if isinstance(result, list):

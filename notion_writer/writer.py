@@ -48,7 +48,7 @@ class NotionRepository:
         """
         local_dt = ticket.open_datetime.astimezone(settings.user_timezone).replace(tzinfo=settings.DEFAULT_TIMEZONE)
         iso_date = local_dt.isoformat(timespec="seconds")
-        return {
+        props =  {
             "공연 제목": {
                 "title": [{"type": "text", "text": {"content": ticket.title}}]
             },
@@ -65,7 +65,8 @@ class NotionRepository:
             "공연 장소": {
                 "rich_text": [{"type": "text", "text": {"content": ticket.venue}}]
             },
-            "상세 링크": {"url": ticket.detail_url},
+            # "상세 링크": {"url": ticket.detail_url},
+
             "출연진": {
                 "rich_text": [{"type": "text", "text": {"content": ticket.cast}}]
             },
@@ -74,6 +75,13 @@ class NotionRepository:
             },
             "단독 판매": {"checkbox": ticket.solo_sale},
         }
+
+        # 상세 링크
+        for idx, url in enumerate(ticket.detail_url_all):
+            key = "상세 링크" if idx == 0 else f"상세 링크{idx + 1}"
+            props[key] = {"url": url}
+
+        return props;
 
     def _build_contents(self, content: dict) -> list[dict]:
         """

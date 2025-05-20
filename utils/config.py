@@ -71,7 +71,7 @@ class Settings(BaseSettings):
                 'cast_box': 'div.box_concert_info',
                 'schedule_dt': 'dt.tit_type',
                 'schedule_dd': 'dd.txt_date',
-                'content_wrap': 'div.wrap_detailview_cont',
+                'content_wrap': 'wrap_detailview_cont',
                 'solo_icon': 'span.ico_list1'
             }
         },

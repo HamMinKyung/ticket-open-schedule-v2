@@ -7,6 +7,7 @@ from utils.config import settings
 from models.ticket import TicketInfo
 from utils.utils import normalize_date_string
 import logging
+import re
 
 
 class InterParkCrawler(AsyncCrawlerBase):
@@ -41,9 +42,29 @@ class InterParkCrawler(AsyncCrawlerBase):
 
     def _parse_perf(self, perf_text: str, key: str) -> Optional[str]:
         """performance_info에서 key에 해당하는 값을 반환"""
-        for line in perf_text.split("\n"):
-            if key in line:
-                return line.split(":", 1)[1].strip()
+        # for line in perf_text.split("\n"):
+        #     if key in line:
+        #         return line.split(":", 1)[1].strip()
+
+        lines = perf_text.split("\n")
+
+        for idx, line in enumerate(lines):
+            normalized = line.strip("※•-* ").strip()
+
+            if key in normalized:
+                # 1) 같은 줄 안에 값이 있는 경우
+                for sep in [":", "：", "·", "-", "~"]:
+                    if sep in normalized:
+                        parts = normalized.split(sep, 1)
+                        if len(parts) > 1 and parts[1].strip():
+                            return parts[1].strip()
+
+                # 2) 다음 줄이 값인 경우
+                if idx + 1 < len(lines):
+                    next_line = lines[idx + 1].strip("※•-* ").strip()
+                    if next_line:
+                        return next_line
+
         return None
 
     async def _fetch_detail(self, session, item: Dict[str, Any]) -> List[TicketInfo]:
@@ -80,7 +101,7 @@ class InterParkCrawler(AsyncCrawlerBase):
                 or self._parse_perf(perf_info, cfg["contents"]["period"])
                 or "-"
         )
-        cast       = content.get(cfg["contents"]["cast"], "-")
+        cast       = re.split( r'\[?［?creative team|creative］?\]?', content.get(cfg["contents"]["cast"], "-"), maxsplit=1, flags=re.IGNORECASE)[0].strip()
         solo_sale  = item.get("goodsSeatTypeStr") == "단독판매"
 
         # 일정 추출 및 필터링
@@ -92,6 +113,7 @@ class InterParkCrawler(AsyncCrawlerBase):
                 f"{settings.current_year}.{raw}",
                 "%Y.%m.%d %H:%M"
             )
+
             if self.start <= dt <= self.end:
                 schedules.append((title, dt))
 
