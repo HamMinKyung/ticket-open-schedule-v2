@@ -2,7 +2,7 @@ name: Weekly Ticket Schedule
 
 on:
   schedule:
-    - cron: '0 23 * * 0'  # 매주 일요일 오전 08:00 KST
+    - cron:  '0 15 * * *'  # 매일 KST 00:00 (== UTC 15:00)
   workflow_dispatch:
 
 jobs:
