@@ -61,7 +61,9 @@ class NotionRepository:
             "오픈 회차": {
                 "rich_text": [{"type": "text", "text": {"content": ticket.round_info}}]
             },
-            "오픈 타입": {"select": {"name": ticket.open_type}},
+            "오픈 타입": {
+                "multi_select": [{"name": name} for name in ticket.open_type_all]
+            },
             "공연 장소": {
                 "rich_text": [{"type": "text", "text": {"content": ticket.venue}}]
             },

@@ -12,6 +12,7 @@ def merge_ticket_sources(tickets: List[TicketInfo]) -> List[TicketInfo]:
         # 1) source를 providers에 포함
         tk.providers.add(tk.source)
         tk.detail_url_all.add(tk.detail_url)
+        tk.open_type_all.add(tk.open_type)
 
         # 2) title/open_datetime 기준 키 생성
         key = (normalize_title_key(tk.title), tk.open_datetime.strftime("%Y-%m-%d %H:%M"))
@@ -19,6 +20,7 @@ def merge_ticket_sources(tickets: List[TicketInfo]) -> List[TicketInfo]:
             # 이미 있으면 providers만 합친다
             merged[key].providers |= tk.providers
             merged[key].detail_url_all |= tk.detail_url_all
+            merged[key].open_type_all |= tk.open_type_all
         else:
             # 처음 보는 조합이면 복제하지 않고 그대로 저장
             merged[key] = tk
