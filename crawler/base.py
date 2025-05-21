@@ -7,6 +7,7 @@ from abc import ABC, abstractmethod
 from models.ticket import TicketInfo
 from utils.config import settings
 
+
 class AsyncCrawlerBase(ABC):
     headers: Dict[str, str] = {}
     timeout: aiohttp.ClientTimeout
@@ -25,29 +26,39 @@ class AsyncCrawlerBase(ABC):
 
     async def crawl(self) -> List[TicketInfo]:
         async with aiohttp.ClientSession(
-                headers=self.headers,
-                timeout=self.timeout
+            headers=self.headers,
+            timeout=self.timeout
         ) as session:
             try:
-                items = await self._fetch_list(session)
+                items = await self._safe_fetch_list(session)
             except Exception as e:
-                print(f"[ERROR][{self.__class__.__name__}] List fetch failed: {type(e).__name__} - {e}")
-                items = []
+                print(f"[ERROR][{self.__class__.__name__}] List fetch critical error: {type(e).__name__} - {e}")
+                return []
 
             detail_results = await asyncio.gather(
-                *(self._fetch_detail(session, item) for item in items),
-                return_exceptions=True
+                *(self._safe_fetch_detail(session, item) for item in items),
+                return_exceptions=False  # 각 fetch_detail에서 내부 처리
             )
 
         tickets: List[TicketInfo] = []
         for result in detail_results:
-            if isinstance(result, Exception):
-                print(f"[ERROR][{self.__class__.__name__}] Detail fetch failed, skipping: {type(result).__name__} - {result}")
-                continue
-            # result가 list인지 단일인지에 따라 평탄화
-            if isinstance(result, list):
-                tickets.extend(result)
-            else:
-                tickets.append(result)
-
+            if result:
+                if isinstance(result, list):
+                    tickets.extend(result)
+                else:
+                    tickets.append(result)
         return tickets
+
+    async def _safe_fetch_list(self, session: aiohttp.ClientSession) -> List[Dict]:
+        try:
+            return await self._fetch_list(session)
+        except Exception as e:
+            print(f"[ERROR][{self.__class__.__name__}] _fetch_list 실패: {type(e).__name__} - {e}")
+            return []
+
+    async def _safe_fetch_detail(self, session: aiohttp.ClientSession, item: Dict) -> List[TicketInfo] | None:
+        try:
+            return await self._fetch_detail(session, item)
+        except Exception as e:
+            print(f"[ERROR][{self.__class__.__name__}] _fetch_detail 실패: {type(e).__name__} - {e}")
+            return None

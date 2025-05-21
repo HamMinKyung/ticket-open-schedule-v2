@@ -99,6 +99,8 @@ class InterParkCrawler(AsyncCrawlerBase):
         round_info = (
                 self._parse_perf(perf_info, cfg["contents"]["open_period"])
                 or self._parse_perf(perf_info, cfg["contents"]["period"])
+                or self._parse_perf(perf_info, cfg["contents"]["period2"])
+                or self._parse_perf(perf_info, cfg["contents"]["datetime"])
                 or "-"
         )
         cast       = re.split( r'\[?［?creative team|creative］?\]?', content.get(cfg["contents"]["cast"], "-"), maxsplit=1, flags=re.IGNORECASE)[0].strip()

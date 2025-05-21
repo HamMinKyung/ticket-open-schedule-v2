@@ -3,6 +3,7 @@ from zoneinfo import ZoneInfo
 from datetime import timezone, timedelta, datetime
 from typing import Dict, Any
 
+
 class Settings(BaseSettings):
     NOTION_TOKEN: str
     NOTION_DB_ID: str
@@ -37,12 +38,14 @@ class Settings(BaseSettings):
                 'name': 'div',
                 'class': 'DetailInfo_contents__grsx5',
             },
-            'contents':{
+            'contents': {
                 'venue': "공연장소",
                 'period': "공연 일시",
                 'cast': "캐스팅",
                 'performance_info': "공연정보",
                 'open_period': "오픈 공연 기간",
+                'datetime': "일 시",
+                'period2': "공연일시",
             }
         },
         'melon': {
@@ -75,15 +78,26 @@ class Settings(BaseSettings):
                 'solo_icon': 'span.ico_list1'
             }
         },
-        'sejong_pac' : {
-             'base_url'  : "https://www.sejongpac.or.kr",
-            'list_endpoint' : "https://www.sejongpac.or.kr/portal/bbs/B0000049/list.do",
-            "params" : {
-                "menuNo" : "200440",
-                "pageIndex" : "1",
+        'sejong_pac': {
+            'base_url': "https://www.sejongpac.or.kr",
+            'list_endpoint': "https://www.sejongpac.or.kr/portal/bbs/B0000049/list.do",
+            "params": {
+                "menuNo": "200440",
+                "pageIndex": "1",
             },
-            "pages" : [1, 2] ,
+            "pages": [1, 2],
 
+        },
+        'sac': {
+            'base_url': "https://www.sac.or.kr",
+            'list_endpoint': "/site/main/show/dataTicketList",
+            "params" : {
+                "pageSize": 10,
+                "ticketOpenFlag": "Y",
+                "sortOrder": "B.TICKET_OPEN_DATE",
+                "sortDirection": "DESC",
+            },
+            "detail_endpoint" :"/site/main/show/show_view?SN="
         }
     }
 
@@ -97,5 +111,6 @@ class Settings(BaseSettings):
     @property
     def current_year(self) -> int:
         return datetime.now(self.user_timezone).year
+
 
 settings = Settings()

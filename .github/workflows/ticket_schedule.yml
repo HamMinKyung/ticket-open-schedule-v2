@@ -35,4 +35,5 @@ jobs:
           NOTION_PAGE_ID: ${{ secrets.NOTION_PAGE_ID }}
           NOTION_DB_ID: ${{ secrets.NOTION_DB_ID }}
           CHROME_BIN: /usr/bin/google-chrome  # ✅ 안정성 추가
+          TZ: Asia/Seoul  # 타임존 설정
         run: python run.py
