@@ -98,6 +98,7 @@ class InterParkCrawler(AsyncCrawlerBase):
         venue      = self._parse_perf(perf_info, cfg["contents"]["venue"]) or item.get("venueName", "")
         round_info = (
                 self._parse_perf(perf_info, cfg["contents"]["open_period"])
+                or self._parse_perf(perf_info, cfg["contents"]["open_period2"])
                 or self._parse_perf(perf_info, cfg["contents"]["period"])
                 or self._parse_perf(perf_info, cfg["contents"]["period2"])
                 or self._parse_perf(perf_info, cfg["contents"]["datetime"])

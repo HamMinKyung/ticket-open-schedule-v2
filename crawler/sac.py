@@ -65,16 +65,16 @@ class SacCrawler(AsyncCrawlerBase):
             contents  = {}
             for info_box in info_tags:
                 info = info_box.find_all("span")
-                title =  info[0].get_text(strip=True) if len(info) > 0 else ""
+                key =  info[0].get_text(strip=True) if len(info) > 0 else ""
                 value = info[1].get_text(strip=True) if len(info) > 1 else ""
-                if title == "기간" :
+                if key == "기간" :
                     round_info = value
-                elif title == "시간":
+                elif key == "시간":
                     round_info += " "+value
-                elif title == "장소":
+                elif key == "장소":
                     venue = value
                 else :
-                    contents[title] = value  # value가 없으면 빈 문자열이 들어감
+                    contents[key] = value  # value가 없으면 빈 문자열이 들어감
 
 
             tab_box  = soup.find_all("div", class_="ctl-sub")

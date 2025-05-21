@@ -44,6 +44,7 @@ class Settings(BaseSettings):
                 'cast': "캐스팅",
                 'performance_info': "공연정보",
                 'open_period': "오픈 공연 기간",
+                'open_period2': "오픈 회차",
                 'datetime': "일 시",
                 'period2': "공연일시",
             }
