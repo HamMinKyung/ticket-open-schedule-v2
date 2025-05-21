@@ -50,23 +50,23 @@ async def main():
     for provider, count in counter.items():
         print(f"{provider}: {count}")
 
-    # repo = NotionRepository()
-    # await repo.write_all(merged)
+    repo = NotionRepository()
+    await repo.write_all(merged)
 
-    for ticket in merged:
-        print(f"제목: {ticket.title}")
-        print(f"오픈일시: {ticket.open_datetime}")
-        print(f"회차: {ticket.round_info}")
-        print(f"출연진: {ticket.cast}")
-        print(f"상세링크: {ticket.detail_url}")
-        print(f"구분: {ticket.category}")
-        print(f"오픈타입: {ticket.open_type}")
-        print(f"공연장소: {ticket.venue}")
-        print(f"예매처: {', '.join(ticket.providers)}")
-        print(f"단독판매: {ticket.solo_sale}")
-        print(f"내용: {ticket.content}")
-        print(f"원본구분: {ticket.source}")
-        print("-" * 40)
+    # for ticket in merged:
+    #     print(f"제목: {ticket.title}")
+    #     print(f"오픈일시: {ticket.open_datetime}")
+    #     print(f"회차: {ticket.round_info}")
+    #     print(f"출연진: {ticket.cast}")
+    #     print(f"상세링크: {ticket.detail_url}")
+    #     print(f"구분: {ticket.category}")
+    #     print(f"오픈타입: {ticket.open_type}")
+    #     print(f"공연장소: {ticket.venue}")
+    #     print(f"예매처: {', '.join(ticket.providers)}")
+    #     print(f"단독판매: {ticket.solo_sale}")
+    #     print(f"내용: {ticket.content}")
+    #     print(f"원본구분: {ticket.source}")
+    #     print("-" * 40)
     print("Crawling and writing finished.")
 
 
