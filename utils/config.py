@@ -7,6 +7,7 @@ from typing import Dict, Any
 class Settings(BaseSettings):
     NOTION_TOKEN: str
     NOTION_DB_ID: str
+    NOTION_ACT_DB_ID: str
     NOTION_PAGE_ID: str
     USER_AGENT: str = "Mozilla/5.0"
     HTTP_TIMEOUT: int = 10

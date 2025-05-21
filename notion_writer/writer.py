@@ -5,6 +5,7 @@ from typing import Optional, List
 from notion_client import Client
 from utils.config import settings
 from models.ticket import TicketInfo
+import re
 
 
 class NotionRepository:
@@ -19,6 +20,8 @@ class NotionRepository:
     ):
         self.client = client or Client(auth=settings.NOTION_TOKEN) # log_level=logging.DEBUG
         self.database_id = database_id or settings.NOTION_DB_ID
+        self.actor_db_id = settings.NOTION_ACT_DB_ID
+        self.actor_name_map = self._load_actor_name_map()
 
     def _find_page(self, ticket: TicketInfo) -> Optional[dict]:
         """
@@ -76,6 +79,14 @@ class NotionRepository:
                 "multi_select": [{"name": name} for name in ticket.providers]
             },
             "단독 판매": {"checkbox": ticket.solo_sale},
+            "출연 배우": {
+                "relation": [
+                    {"id": self.actor_name_map[name]}
+                    for name in self._extract_names_from_cast(ticket.cast)
+                    if name in self.actor_name_map
+                ]
+            }
+
         }
 
         # 상세 링크
@@ -119,6 +130,7 @@ class NotionRepository:
     def upsert_ticket(self, ticket: TicketInfo) -> None:
         try:
             existing = self._find_page(ticket)
+
             props = self._build_properties(ticket)
             contents = self._build_contents(ticket.content)
 
@@ -175,6 +187,25 @@ class NotionRepository:
     #     for ticket in tickets:
     #         self.upsert_ticket(ticket)
 
+    def _load_actor_name_map(self) -> dict:
+        results = self._get_all_pages(self.actor_db_id)
+        return {
+            p["properties"]["이름"]["title"][0]["plain_text"]: p["id"]
+            for p in results
+            if p["properties"]["이름"]["title"]
+        }
+
+    def _extract_names_from_cast(self, cast_text: str) -> list[str]:
+        matched_names = []
+        for name in self.actor_name_map.keys():
+            # 경계 처리: 이름 앞뒤가 (시작/끝/공백/쉼표/개행/구두점) 중 하나일 때만 매칭
+            pattern = rf'(?<!\w){re.escape(name)}(?!\w)'
+            if re.search(pattern, cast_text):
+                matched_names.append(name)
+
+        return matched_names
+
+
     async def write_all(self, tickets: List[TicketInfo]) -> None:
         task= [
             asyncio.to_thread(self.upsert_ticket, ticket)
@@ -185,4 +216,60 @@ class NotionRepository:
         for ticket, result in zip(tickets, result):
             if isinstance(result, Exception):
                 logging.error(f"❌ 티켓 처리 실패: {ticket.title}", exc_info=result)
+
+    def sync_existing_ticket_relations(self):
+        pages = self._get_all_pages(self.database_id)
+        print(" 🔄 기존 티켓 DB에서 출연진 필드 기반으로 출연 배우 Relation 갱신 시작", len(pages))
+        for page in pages:
+            page_id = page["id"]
+            title = page["properties"].get("공연 제목", {}).get("title", [])
+            title_str = title[0]["plain_text"] if title else "(제목 없음)"
+            cast_field = page["properties"].get("출연진", {}).get("rich_text", [])
+            cast_text = cast_field[0]["plain_text"] if cast_field else ""
+
+            if not cast_text.strip():
+                print(f"⚠️ 출연진 없음: {title_str}")
+                continue
+            names = self._extract_names_from_cast(cast_text)
+            matched_actor_ids = [
+                {"id": self.actor_name_map[name]}
+                for name in names
+                if name in self.actor_name_map
+            ]
+
+            if not matched_actor_ids:
+                print(f"⚠️ 매칭 배우 없음: {title_str}")
+                continue
+
+            try:
+                self.client.pages.update(
+                    page_id=page_id,
+                    properties={
+                        "출연 배우": {
+                            "relation": matched_actor_ids
+                        }
+                    }
+                )
+                print(f"✅ 갱신 완료: {title_str}")
+            except Exception as ex:
+                print(f"❌ 갱신 실패: {title_str}", ex)
+
+    def _get_all_pages(self, database_id: str) -> list:
+        results = []
+        start_cursor = None
+
+        while True:
+            params = {"database_id": database_id}
+            if start_cursor:
+                params["start_cursor"] = start_cursor
+
+            response = self.client.databases.query(**params)
+            results.extend(response.get("results", []))
+
+            if response.get("has_more"):
+                start_cursor = response.get("next_cursor")
+            else:
+                break
+
+        return results
 

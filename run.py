@@ -30,7 +30,7 @@ def calc_date_range() -> Tuple[datetime, datetime]:
     end = (start + timedelta(days=7)).replace(hour=23, minute=59, second=0, microsecond=0)
 
     print(f"실행 일자 {start} - {end}")
-    return start, end
+    return start, start
 
 
 async def main():
@@ -52,6 +52,7 @@ async def main():
 
     repo = NotionRepository()
     await repo.write_all(merged)
+    # repo.sync_existing_ticket_relations()
 
     # for ticket in merged:
     #     print(f"제목: {ticket.title}")

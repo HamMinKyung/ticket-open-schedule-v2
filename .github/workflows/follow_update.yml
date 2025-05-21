@@ -1,8 +1,6 @@
 name: Weekly Ticket Schedule
 
 on:
-  schedule:
-    - cron:  '0 15 * * *'  # 매일 KST 00:00 (== UTC 15:00)
   workflow_dispatch:
 
 jobs:
@@ -37,4 +35,4 @@ jobs:
           NOTION_ACT_DB_ID: ${{ secrets.NOTION_ACT_DB_ID }}
           CHROME_BIN: /usr/bin/google-chrome  # ✅ 안정성 추가
           TZ: Asia/Seoul  # 타임존 설정
-        run: python run.py
+        run: python follow_run.py
