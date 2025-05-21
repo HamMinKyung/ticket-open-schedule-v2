@@ -1,4 +1,4 @@
-name: Weekly Ticket Schedule
+name: RUN Follow Ticket Actor
 
 on:
   workflow_dispatch:
@@ -27,7 +27,7 @@ jobs:
           python -m pip install --upgrade pip
           pip install -r requirements.txt
 
-      - name: Run Weekly Ticket Scraper
+      - name: Run Follow Ticket Actor
         env:
           NOTION_TOKEN: ${{ secrets.NOTION_TOKEN }}
           NOTION_PAGE_ID: ${{ secrets.NOTION_PAGE_ID }}
