@@ -32,12 +32,12 @@ class InterParkCrawler(AsyncCrawlerBase):
                         # openDateStr이 비어있지 않고
                             (d := item.get("openDateStr")) and
                             # openDateStr을 datetime으로 변환하고
-                            (open_time := datetime.fromisoformat(d)) and
+                            (open_time := datetime.strptime(d, "%Y-%m-%d %H:%M:%S")) and
+                            # self.start와 self.end 사이에 있는지 확인
                             (self.start <= open_time <= self.end)
                     ), data
                 )
             )
-        logging.info("Crawling InterPark API ticket openings... result count: %d", len(result))
         return result
 
     def _parse_perf(self, perf_text: str, key: str) -> Optional[str]:

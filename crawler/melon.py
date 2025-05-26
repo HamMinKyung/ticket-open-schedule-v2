@@ -69,7 +69,6 @@ class MelonCrawler(AsyncCrawlerBase):
                         "genre":          genre_name
                     })
             # 필터링된 항목만 반환
-        logging.info(f"🔍 멜론티켓 공연 수집 완료: {len(items)}건")
         return items
 
     async def _fetch_detail(

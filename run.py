@@ -29,12 +29,12 @@ def calc_date_range() -> Tuple[datetime, datetime]:
     # 7일 뒤 23:59
     end = (start + timedelta(days=7)).replace(hour=23, minute=59, second=0, microsecond=0)
 
-    print(f"실행 일자 {start} - {end}")
-    return start, start
+    return start, end
 
 
 async def main():
     dr = calc_date_range()
+    print(f"크롤링 기간: {dr[0]} ~ {dr[1]} start.")
     crawlers = [InterParkCrawler(dr), MelonCrawler(dr), SejongPac(dr), SacCrawler(dr)]
 
     tasks = [crawler.crawl() for crawler in crawlers]
@@ -51,6 +51,8 @@ async def main():
             continue
         all_tickets.extend(result)
 
+    print(f"총 티켓 수: {len(all_tickets)}")
+
     merged = merge_ticket_sources(all_tickets)
 
     # providers는 set이므로, 각 티켓의 provider를 하나씩 꺼내서 카운트
@@ -58,7 +60,7 @@ async def main():
     counter = Counter(provider_list)
 
     for provider, count in counter.items():
-        print(f"{provider}: {count}")
+        print(f"site {provider}: {count}")
 
     repo = NotionRepository()
     await repo.write_all(merged)

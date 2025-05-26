@@ -82,8 +82,6 @@ class SejongPac(AsyncCrawlerBase):
                         "link": link,
                         "open_date": dt,
                     })
-        # 필터링된 항목만 반환
-        print(f"🔍 세종문화회관 공연 수집 완료: {len(items)}건")
         return items
 
     async def _fetch_detail(self, session, item: Dict[str, Any]) -> List[TicketInfo]:
