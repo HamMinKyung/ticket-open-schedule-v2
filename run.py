@@ -40,7 +40,17 @@ async def main():
     tasks = [crawler.crawl() for crawler in crawlers]
     results = await asyncio.gather(*tasks)
 
-    all_tickets = [t for sub in results for t in sub]
+    # ✅ 예외가 발생해도 전체 실행 유지
+    tasks = [crawler.crawl() for crawler in crawlers]
+    results = await asyncio.gather(*tasks, return_exceptions=True)
+
+    all_tickets = []
+    for result in results:
+        if isinstance(result, Exception):
+            print(f"[CRAWLER ERROR] {type(result).__name__}: {result}")
+            continue
+        all_tickets.extend(result)
+
     merged = merge_ticket_sources(all_tickets)
 
     # providers는 set이므로, 각 티켓의 provider를 하나씩 꺼내서 카운트
