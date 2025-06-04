@@ -18,7 +18,7 @@ class NotionRepository:
             client: Optional[Client] = None,
             database_id: Optional[str] = None
     ):
-        self.client = client or Client(auth=settings.NOTION_TOKEN) # log_level=logging.DEBUG
+        self.client = client or Client(auth=settings.NOTION_TOKEN)  # log_level=logging.DEBUG
         self.database_id = database_id or settings.NOTION_DB_ID
         self.actor_db_id = settings.NOTION_ACT_DB_ID
         self.actor_name_map = self._load_actor_name_map()
@@ -51,7 +51,7 @@ class NotionRepository:
         """
         local_dt = ticket.open_datetime.astimezone(settings.user_timezone).replace(tzinfo=settings.DEFAULT_TIMEZONE)
         iso_date = local_dt.isoformat(timespec="seconds")
-        props =  {
+        props = {
             "공연 제목": {
                 "title": [{"type": "text", "text": {"content": ticket.title}}]
             },
@@ -82,7 +82,10 @@ class NotionRepository:
             "출연 배우": {
                 "relation": [
                     {"id": self.actor_name_map[name]}
-                    for name in self._extract_names_from_cast(ticket.cast)
+                    for name in set(
+                        self._extract_names_from_cast(ticket.cast) +
+                        self._extract_names_from_cast(ticket.title)
+                    )
                     if name in self.actor_name_map
                 ]
             }
@@ -205,9 +208,8 @@ class NotionRepository:
 
         return matched_names
 
-
     async def write_all(self, tickets: List[TicketInfo]) -> None:
-        task= [
+        task = [
             asyncio.to_thread(self.upsert_ticket, ticket)
             for ticket in tickets
         ]
@@ -230,7 +232,10 @@ class NotionRepository:
             if not cast_text.strip():
                 print(f"⚠️ 출연진 없음: {title_str}")
                 continue
-            names = self._extract_names_from_cast(cast_text)
+            names = set(
+                        self._extract_names_from_cast(cast_text) +
+                        self._extract_names_from_cast(title_str)
+                    )
             matched_actor_ids = [
                 {"id": self.actor_name_map[name]}
                 for name in names
@@ -272,4 +277,3 @@ class NotionRepository:
                 break
 
         return results
-
