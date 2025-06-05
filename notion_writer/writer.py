@@ -43,7 +43,8 @@ class NotionRepository:
     def _set_remote_url_with_token(self):
         remote_url = f"https://{self.github_username}:{self.github_token}@github.com/{self.github_username}/{self.github_repo}.git"
         subprocess.run(["git", "remote", "remove", "origin"], check=False)
-        subprocess.run(["git", "remote", "set-url", "origin", remote_url], check=True)
+        print("🔗 Git remote URL 설정:", remote_url)
+        subprocess.run(["git", 'remote', 'add', 'origin', remote_url], check=True)
 
     def _ensure_branch(self):
         subprocess.run(["git", "fetch", "origin"], check=True)
