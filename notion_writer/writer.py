@@ -61,49 +61,49 @@ class NotionRepository:
         """
         local_dt = ticket.open_datetime.astimezone(settings.user_timezone).replace(tzinfo=settings.DEFAULT_TIMEZONE)
         iso_date = local_dt.isoformat(timespec="seconds")
-        props = {
-            "공연 제목": {
-                "title": [{"type": "text", "text": {"content": ticket.title}}]
-            },
-            "구분": {
-                "rich_text": [{"type": "text", "text": {"content": ticket.category}}]
-            },
-            "오픈 일시": {
-                "date": {"start": iso_date}
-            },
-            "오픈 회차": {
-                "rich_text": [{"type": "text", "text": {"content": ticket.round_info}}]
-            },
-            "오픈 타입": {
-                "multi_select": [{"name": name} for name in ticket.open_type_all]
-            },
-            "공연 장소": {
-                "rich_text": [{"type": "text", "text": {"content": ticket.venue}}]
-            },
-            # "상세 링크": {"url": ticket.detail_url},
-
-            "출연진": {
-                "rich_text": [{"type": "text", "text": {"content": ticket.cast}}]
-            },
-            "예매처": {
-                "multi_select": [{"name": name} for name in ticket.providers]
-            },
-            "단독 판매": {"checkbox": ticket.solo_sale},
-            "출연 배우": {
-                "relation": [
-                    {"id": self.actor_name_map[name]}
-                    for name in set(
-                        self._extract_names_from_cast(ticket.cast) +
-                        self._extract_names_from_cast(ticket.title)
-                    )
-                    if name in self.actor_name_map
-                ]
-            },
-            "등록 링크": {"url": ticket.ical_url}
-        }
 
         # 상세 링크
         for idx, url in enumerate(ticket.detail_url_all):
+            props = {
+                "공연 제목": {
+                    "title": [{"type": "text", "text": {"content": ticket.title}}]
+                },
+                "구분": {
+                    "rich_text": [{"type": "text", "text": {"content": ticket.category}}]
+                },
+                "오픈 일시": {
+                    "date": {"start": iso_date}
+                },
+                "오픈 회차": {
+                    "rich_text": [{"type": "text", "text": {"content": ticket.round_info}}]
+                },
+                "오픈 타입": {
+                    "multi_select": [{"name": name} for name in ticket.open_type_all]
+                },
+                "공연 장소": {
+                    "rich_text": [{"type": "text", "text": {"content": ticket.venue}}]
+                },
+                # "상세 링크": {"url": ticket.detail_url},
+
+                "출연진": {
+                    "rich_text": [{"type": "text", "text": {"content": ticket.cast}}]
+                },
+                "예매처": {
+                    "multi_select": [{"name": name} for name in ticket.providers]
+                },
+                "단독 판매": {"checkbox": ticket.solo_sale},
+                "출연 배우": {
+                    "relation": [
+                        {"id": self.actor_name_map[name]}
+                        for name in set(
+                            self._extract_names_from_cast(ticket.cast) +
+                            self._extract_names_from_cast(ticket.title)
+                        )
+                        if name in self.actor_name_map
+                    ]
+                },
+                "등록 링크": {"url": ticket.ical_url}
+            }
             key = "상세 링크" if idx == 0 else f"상세 링크{idx + 1}"
             props[key] = {"url": url}
 
@@ -307,7 +307,12 @@ class NotionRepository:
         event.begin = ticket.open_datetime.astimezone(settings.user_timezone)
         event.end = event.begin + timedelta(minutes=30)
         event.location = ticket.venue
-        event.description = ", ".join(ticket.providers) + ", ".join(set(self._extract_names_from_cast(ticket.cast), self._extract_names_from_cast(ticket.title)))
+        # 출연 배우 이름 추출 (중복 호출 방지)
+        cast_names = self._extract_names_from_cast(ticket.cast)
+        title_names = self._extract_names_from_cast(ticket.title)
+        all_names = list(set(cast_names + title_names))
+
+        event.description = ", ".join(ticket.providers + all_names)
         event.categories = {"티켓오픈"}
 
         # 알림 추가 방식 수정
