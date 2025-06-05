@@ -7,11 +7,13 @@ on:
 
 jobs:
   run-ticket-scraper:
-    runs-on: ubuntu-22.04  # 더 안정적으로
+    runs-on: ubuntu-22.04
 
     steps:
       - name: Checkout Repository
         uses: actions/checkout@v3
+        with:
+          fetch-depth: 0
 
       - name: Set up Python
         uses: actions/setup-python@v4
@@ -36,21 +38,30 @@ jobs:
           NOTION_DB_ID: ${{ secrets.NOTION_DB_ID }}
           NOTION_ACT_DB_ID: ${{ secrets.NOTION_ACT_DB_ID }}
           GB_ICAL_URL : ${{ secrets.GB_ICAL_URL }}
-          CHROME_BIN: /usr/bin/google-chrome  # ✅ 안정성 추가
-          TZ: Asia/Seoul  # 타임존 설정
+          CHROME_BIN: /usr/bin/google-chrome
+          TZ: Asia/Seoul
         run: python run.py
 
-      - name: Commit & Push .ics files
+      - name: Prepare for pushing .ics files to main branch
         run: |
           git config --local user.email "github-actions@github.com"
           git config --local user.name "GitHub Actions"
-          
-          # 변경된 파일만 스테이징
+
+          git fetch origin main
+          git worktree add temp-main origin/main
+
+          rm -rf temp-main/ical_exports
+          mkdir -p temp-main/ical_exports
+          cp -r ical_exports/*.ics temp-main/ical_exports/
+
+      - name: Commit & Push .ics files to main
+        run: |
+          cd temp-main
+
           git add ical_exports/*.ics
-
-          # 변경이 있을 때만 커밋
           git diff --cached --quiet || git commit -m "Update .ics schedule files"
+          git push origin HEAD:main
 
-          # main 브랜치에 push
-          git push origin main
-
+      - name: Cleanup
+        run: |
+          git worktree remove temp-main --force
