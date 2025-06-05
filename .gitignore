@@ -1,4 +1,5 @@
-*.log
-.env
-__pycache__/
-*.pyc
+/*.log
+/.env
+/__pycache__/
+/*.pyc
+/ical_exports/**
