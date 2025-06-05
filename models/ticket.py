@@ -20,3 +20,4 @@ class TicketInfo(BaseModel):
     content: dict         = Field("", alias="내용")
     source: str          = Field(..., alias="예매처 구분(원본)")
     detail_url_all: Set[str] = Field(default_factory=set, alias="상세 링크")
+    ical_url: str = Field("", alias="등록 링크")

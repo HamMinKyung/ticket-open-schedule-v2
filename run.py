@@ -64,7 +64,6 @@ async def main():
 
     repo = NotionRepository()
     await repo.write_all(merged)
-    # repo.sync_existing_ticket_relations()
 
     # for ticket in merged:
     #     print(f"제목: {ticket.title}")

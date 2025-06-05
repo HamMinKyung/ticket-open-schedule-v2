@@ -2,10 +2,16 @@
 import asyncio
 import logging
 from typing import Optional, List
+
+from ics.grammar.parse import ContentLine
 from notion_client import Client
 from utils.config import settings
 from models.ticket import TicketInfo
+from ics import Calendar, Event
 import re
+import os
+import subprocess
+from datetime import timedelta
 
 
 class NotionRepository:
@@ -22,6 +28,24 @@ class NotionRepository:
         self.database_id = database_id or settings.NOTION_DB_ID
         self.actor_db_id = settings.NOTION_ACT_DB_ID
         self.actor_name_map = self._load_actor_name_map()
+        self.output_dir = settings.GITHUB_ICAL_DIR
+        self.ical_url = settings.GITHUB_ICAL_URL
+        self.github_repo = settings.GITHUB_REPO
+        self.github_token = settings.GITHUB_TOKEN
+        self.github_username = settings.GITHUB_USERNAME
+        self.github_branch = getattr(settings, "GITHUB_BRANCH", "main")
+
+        os.makedirs(self.output_dir, exist_ok=True)
+        self._set_remote_url_with_token()
+        self._ensure_branch()
+
+    def _set_remote_url_with_token(self):
+        remote_url = f"https://{self.github_username}:{self.github_token}@github.com/{self.github_username}/{self.github_repo}.git"
+        subprocess.run(["git", "remote", "set-url", "origin", remote_url], check=True)
+
+    def _ensure_branch(self):
+        subprocess.run(["git", "fetch", "origin"], check=True)
+        subprocess.run(["git", "checkout", "-B", self.github_branch], check=True)
 
     def _find_page(self, ticket: TicketInfo) -> Optional[dict]:
         """
@@ -88,8 +112,8 @@ class NotionRepository:
                     )
                     if name in self.actor_name_map
                 ]
-            }
-
+            },
+            "등록 링크": {"url": ticket.ical_url}
         }
 
         # 상세 링크
@@ -134,6 +158,8 @@ class NotionRepository:
         try:
             existing = self._find_page(ticket)
 
+            ical_url = self._generate_ics_and_push(ticket)
+            ticket.ical_url = ical_url
             props = self._build_properties(ticket)
             contents = self._build_contents(ticket.content)
 
@@ -219,6 +245,14 @@ class NotionRepository:
             if isinstance(result, Exception):
                 logging.error(f"❌ 티켓 처리 실패: {ticket.title}", exc_info=result)
 
+        # 2. Git 작업은 마지막에 일괄 처리
+        try:
+            subprocess.run(["git", "add", f"{self.output_dir}/*.ics"], shell=True, check=True)
+            subprocess.run(["git", "commit", "-m", "Add all .ics"], check=True)
+            subprocess.run(["git", "push", "-u", "origin", self.github_branch], check=True)
+        except subprocess.CalledProcessError as e:
+            logging.error("❌ git push failed", exc_info=e)
+
     def sync_existing_ticket_relations(self):
         pages = self._get_all_pages(self.database_id)
         print(" 🔄 기존 티켓 DB에서 출연진 필드 기반으로 출연 배우 Relation 갱신 시작", len(pages))
@@ -233,9 +267,9 @@ class NotionRepository:
                 print(f"⚠️ 출연진 없음: {title_str}")
                 continue
             names = set(
-                        self._extract_names_from_cast(cast_text) +
-                        self._extract_names_from_cast(title_str)
-                    )
+                self._extract_names_from_cast(cast_text) +
+                self._extract_names_from_cast(title_str)
+            )
             matched_actor_ids = [
                 {"id": self.actor_name_map[name]}
                 for name in names
@@ -277,3 +311,39 @@ class NotionRepository:
                 break
 
         return results
+
+    def _generate_ics_and_push(self, ticket: TicketInfo) -> str:
+        """
+        티켓 정보를 기반으로 ICS 파일을 생성하고 github page에 업로드합니다.
+        """
+        slug = f"{ticket.title.replace(' ', '_')}_{ticket.open_datetime.strftime('%Y%m%d%H%M')}"
+        file_name = f"{slug}.ics"
+        file_path = os.path.join(self.output_dir, file_name)
+
+        cal = Calendar()
+        event = Event()
+        event.name = f"티켓오픈 {ticket.title}"
+        event.begin = ticket.open_datetime.astimezone(settings.user_timezone)
+        event.end = event.begin + timedelta(minutes=30)
+        event.location = ticket.venue
+        event.description = ", ".join(ticket.providers)
+        event.categories = {"티켓오픈"}
+
+        # 알림 추가 방식 수정
+        alarm_lines = [
+            ContentLine(name="BEGIN", value="VALARM"),
+            ContentLine(name="TRIGGER", value="-PT30M"),
+            ContentLine(name="ACTION", value="DISPLAY"),
+            ContentLine(name="DESCRIPTION", value="Reminder"),
+            ContentLine(name="END", value="VALARM")
+        ]
+
+        for line in alarm_lines:
+            event.extra.append(line)
+
+        cal.events.add(event)
+
+        with open(file_path, "w", encoding="utf-8") as f:
+            f.write(cal.serialize())
+
+        return f"{self.ical_url}{self.output_dir}/{file_name}"
