@@ -11,9 +11,9 @@ class Settings(BaseSettings):
     NOTION_PAGE_ID: str
     USER_AGENT: str = "Mozilla/5.0"
     HTTP_TIMEOUT: int = 10
-    GITHUB_USERNAME: str
-    GITHUB_TOKEN: str
-    GITHUB_REPO: str
+    ICAL_USERNAME: str
+    ICAL_TOKEN: str
+    ICAL_REPO: str
     GITHUB_ICAL_DIR: str = "ical_exports"
     GITHUB_ICAL_URL: str = "https://hamminkyung.github.io/notion-calendar-ics/"
     GITHUB_BRANCH: str = "main"
