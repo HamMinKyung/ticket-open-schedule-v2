@@ -37,7 +37,7 @@ jobs:
           NOTION_ACT_DB_ID: ${{ secrets.NOTION_ACT_DB_ID }}
           GB_ICAL_DIR : ${{ secrets.GB_ICAL_DIR }}
           GB_BRANCH : ${{ secrets.GB_BRANCH }}
-          GB_ICAL_URL : ${{ GB_ICAL_URL }}
+          GB_ICAL_URL : ${{ secrets.GB_ICAL_URL }}
           CHROME_BIN: /usr/bin/google-chrome  # ✅ 안정성 추가
           TZ: Asia/Seoul  # 타임존 설정
         run: python run.py

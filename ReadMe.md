@@ -15,4 +15,3 @@
 - `GB_ICAL_DIR` - 공연 일정 iCal 파일 저장 디렉토리
 - `GB_ICAL_URL` - 공연 일정 iCal 파일 URL
 - `GB_BRANCH` - GitHub Branch 이름
-- 
