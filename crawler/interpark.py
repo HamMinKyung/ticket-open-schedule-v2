@@ -136,10 +136,10 @@ class InterParkCrawler(AsyncCrawlerBase):
                 category      = item.get("goodsGenreStr", "-").strip(), # 구분
                 open_type     = open_type.strip(),                  # 오픈 타입
                 venue         = venue.strip(),          # 공연 장소
-                providers     = {"인터파크"},   # 예매처
+                providers     = {"놀티켓"},   # 예매처
                 solo_sale     = solo_sale,      # 단독 판매
                 content       = content,        # 내용
-                source        = "인터파크" # 예매처(원본)
+                source        = "놀티켓" # 예매처(원본)
             ))
 
         return tickets
