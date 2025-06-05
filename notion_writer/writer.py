@@ -312,7 +312,7 @@ class NotionRepository:
         title_names = self._extract_names_from_cast(ticket.title)
         all_names = list(set(cast_names + title_names))
 
-        event.description = ", ".join(ticket.providers + all_names)
+        event.description = ", ".join(ticket.providers ) +" "+ ", ".join(all_names)
         event.categories = {"티켓오픈"}
 
         # 알림 추가 방식 수정
