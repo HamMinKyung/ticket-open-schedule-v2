@@ -9,6 +9,10 @@ jobs:
   run-ticket-scraper:
     runs-on: ubuntu-22.04
 
+    permissions:
+      contents: write
+
+
     steps:
       - name: Checkout Repository
         uses: actions/checkout@v3
