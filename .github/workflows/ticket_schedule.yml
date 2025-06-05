@@ -42,6 +42,10 @@ jobs:
           TZ: Asia/Seoul  # 타임존 설정
         run: python run.py
 
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ env.GB_BRANCH }}
+
       - name: Commit & Push .ics files
         env:
           GB_ICAL_DIR: ${{ secrets.GB_ICAL_DIR }}
