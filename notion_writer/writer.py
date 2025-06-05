@@ -99,7 +99,7 @@ class NotionRepository:
                     if name in self.actor_name_map
                 ]
             },
-            "등록 링크": {"url": ticket.ical_url}
+            # "등록 링크": {"url": ticket.ical_url}
         }
 
         # 상세 링크
@@ -109,7 +109,7 @@ class NotionRepository:
 
         return props;
 
-    def _build_contents(self, content: dict) -> list[dict]:
+    def _build_contents(self, content: dict, ical_url: str) -> list[dict]:
         """
         TicketInfo.content 딕셔너리를 Notion 블록 리스트로 변환합니다.
         긴 텍스트(value)는 2000자씩 잘라 여러 paragraph 블록으로 분할 삽입합니다.
@@ -119,6 +119,18 @@ class NotionRepository:
             return [text[i: i + size] for i in range(0, len(text), size)]
 
         children: list[dict] = []
+        children.append(
+            {
+                "object": "block",
+                "type": "file",
+                "file": {
+                    "external": {
+                        "url": f"{ical_url}"
+                    }
+                }
+            }
+
+        )
         for key, value in content.items():
             # 섹션 헤딩
             children.append({
@@ -147,7 +159,7 @@ class NotionRepository:
             ical_url = self._generate_ics_and_push(ticket)
             ticket.ical_url = ical_url
             props = self._build_properties(ticket)
-            contents = self._build_contents(ticket.content)
+            contents = self._build_contents(ticket.content, ticket.ical_url)
 
             if existing:
                 page_id = existing["id"]
@@ -234,7 +246,6 @@ class NotionRepository:
         ics_files = glob.glob(f"{self.output_dir}/*.ics")
         print(f"📁 {self.output_dir} 내 .ics 파일 수: {len(ics_files)}개")
 
-
     def sync_existing_ticket_relations(self):
         pages = self._get_all_pages(self.database_id)
         print(" 🔄 기존 티켓 DB에서 출연진 필드 기반으로 출연 배우 Relation 갱신 시작", len(pages))
@@ -275,7 +286,6 @@ class NotionRepository:
             except Exception as ex:
                 print(f"❌ 갱신 실패: {title_str}", ex)
 
-
     def _get_all_pages(self, database_id: str) -> list:
         results = []
         start_cursor = None
@@ -294,7 +304,6 @@ class NotionRepository:
                 break
 
         return results
-
 
     def _generate_ics_and_push(self, ticket: TicketInfo) -> str:
         """
