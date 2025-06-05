@@ -252,7 +252,7 @@ class NotionRepository:
         try:
             print("📦 Git 작업 시작")
             subprocess.run(["git", "config", "--local", "user.email", "github-actions@github.com"], check=True)
-            subprocess.run(["git", "config", "--local", "user.name", "GitHub Actions"], check=True)
+            subprocess.run(["git", "config", "--local", "user.name", self.github_username], check=True)
 
             ics_files = glob.glob(f"{self.output_dir}/*.ics")
             print(f"📁 {self.output_dir} 내 .ics 파일 수: {len(ics_files)}개")
