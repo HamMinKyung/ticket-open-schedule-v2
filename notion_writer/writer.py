@@ -248,6 +248,9 @@ class NotionRepository:
 
         # 2. Git 작업은 마지막에 일괄 처리
         try:
+            subprocess.run(["git", "config", "--local", "user.email", "github-actions@github.com"], check=True)
+            subprocess.run(["git", "config", "--local", "user.name", "GitHub Actions"], check=True)
+
             ics_files = glob.glob(f"{self.output_dir}/*.ics")
             print(f"📁 {self.output_dir} 내 .ics 파일 수: {len(ics_files)}개")
 
