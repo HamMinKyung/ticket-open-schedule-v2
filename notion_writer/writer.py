@@ -42,6 +42,7 @@ class NotionRepository:
 
     def _set_remote_url_with_token(self):
         remote_url = f"https://{self.github_username}:{self.github_token}@github.com/{self.github_username}/{self.github_repo}.git"
+        subprocess.run(["git", "remote", "remove", "origin"], check=False)
         subprocess.run(["git", "remote", "set-url", "origin", remote_url], check=True)
 
     def _ensure_branch(self):
@@ -64,10 +65,10 @@ class NotionRepository:
             }
         )
         results = response.get("results", [])
-        if not results:
-            print(f"❌ 페이지 없음: {ticket.title} (오픈일시={ticket.open_datetime})")
-        else:
-            print(f"✅ 페이지 존재: {ticket.title} (page_id={results[0]['id']})")
+        # if not results:
+        #     print(f"❌ 페이지 없음: {ticket.title} (오픈일시={ticket.open_datetime})")
+        # else:
+        #     print(f"✅ 페이지 존재: {ticket.title} (page_id={results[0]['id']})")
         return results[0] if results else None
 
     def _build_properties(self, ticket: TicketInfo) -> dict:
@@ -248,6 +249,7 @@ class NotionRepository:
 
         # 2. Git 작업은 마지막에 일괄 처리
         try:
+            print("📦 Git 작업 시작")
             subprocess.run(["git", "config", "--local", "user.email", "github-actions@github.com"], check=True)
             subprocess.run(["git", "config", "--local", "user.name", "GitHub Actions"], check=True)
 
@@ -257,7 +259,7 @@ class NotionRepository:
             subprocess.run(["git", "add"] + ics_files, check=True)
             subprocess.run(["git", "commit", "-m", "Add all .ics"], check=True)
             subprocess.run(["git", "push", "-u", "origin", self.github_branch], check=True)
-
+            print("✅ git push 완료")
         except subprocess.CalledProcessError as e:
             logging.error("❌ git push failed", exc_info=e)
 
