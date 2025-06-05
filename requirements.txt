@@ -7,3 +7,5 @@ pydantic~=2.11.4
 dotenv~=0.9.9
 pydantic-settings~=2.9.1
 httpx >= 0.15.0
+
+ics >=0.7.1
