@@ -29,6 +29,10 @@ jobs:
           python -m pip install --upgrade pip
           pip install -r requirements.txt
 
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ env.GB_BRANCH }}
+
       - name: Run Weekly Ticket Scraper
         env:
           NOTION_TOKEN: ${{ secrets.NOTION_TOKEN }}
@@ -41,10 +45,6 @@ jobs:
           CHROME_BIN: /usr/bin/google-chrome  # ✅ 안정성 추가
           TZ: Asia/Seoul  # 타임존 설정
         run: python run.py
-
-      - uses: actions/checkout@v4
-        with:
-          ref: ${{ env.GB_BRANCH }}
 
       - name: Commit & Push .ics files
         env:
