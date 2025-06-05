@@ -30,9 +30,9 @@ class NotionRepository:
         self.actor_name_map = self._load_actor_name_map()
         self.output_dir = settings.GITHUB_ICAL_DIR
         self.ical_url = settings.GITHUB_ICAL_URL
-        self.github_repo = settings.GITHUB_REPO
-        self.github_token = settings.GITHUB_TOKEN
-        self.github_username = settings.GITHUB_USERNAME
+        self.github_repo = settings.ICAL_REPO
+        self.github_token = settings.ICAL_TOKEN
+        self.github_username = settings.ICAL_USERNAME
         self.github_branch = getattr(settings, "GITHUB_BRANCH", "main")
 
         os.makedirs(self.output_dir, exist_ok=True)
