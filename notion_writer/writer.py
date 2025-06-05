@@ -307,7 +307,7 @@ class NotionRepository:
         event.begin = ticket.open_datetime.astimezone(settings.user_timezone)
         event.end = event.begin + timedelta(minutes=30)
         event.location = ticket.venue
-        event.description = ", ".join(ticket.providers) + ", ".join(self._extract_names_from_cast(ticket.cast))
+        event.description = ", ".join(ticket.providers) + ", ".join(set(self._extract_names_from_cast(ticket.cast), self._extract_names_from_cast(ticket.title)))
         event.categories = {"티켓오픈"}
 
         # 알림 추가 방식 수정
