@@ -12,6 +12,7 @@ import re
 import os
 import subprocess
 from datetime import timedelta
+import glob
 
 
 class NotionRepository:
@@ -247,11 +248,16 @@ class NotionRepository:
 
         # 2. Git 작업은 마지막에 일괄 처리
         try:
-            subprocess.run(["git", "add", f"{self.output_dir}/*.ics"], shell=True, check=True)
+            ics_files = glob.glob(f"{self.output_dir}/*.ics")
+            print(f"📁 {self.output_dir} 내 .ics 파일 수: {len(ics_files)}개")
+
+            subprocess.run(["git", "add"] + ics_files, check=True)
             subprocess.run(["git", "commit", "-m", "Add all .ics"], check=True)
             subprocess.run(["git", "push", "-u", "origin", self.github_branch], check=True)
+
         except subprocess.CalledProcessError as e:
             logging.error("❌ git push failed", exc_info=e)
+
 
     def sync_existing_ticket_relations(self):
         pages = self._get_all_pages(self.database_id)
@@ -293,6 +299,7 @@ class NotionRepository:
             except Exception as ex:
                 print(f"❌ 갱신 실패: {title_str}", ex)
 
+
     def _get_all_pages(self, database_id: str) -> list:
         results = []
         start_cursor = None
@@ -311,6 +318,7 @@ class NotionRepository:
                 break
 
         return results
+
 
     def _generate_ics_and_push(self, ticket: TicketInfo) -> str:
         """
