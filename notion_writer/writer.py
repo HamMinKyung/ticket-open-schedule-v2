@@ -10,7 +10,6 @@ from models.ticket import TicketInfo
 from ics import Calendar, Event
 import re
 import os
-import subprocess
 from datetime import timedelta
 import glob
 
@@ -29,26 +28,10 @@ class NotionRepository:
         self.database_id = database_id or settings.NOTION_DB_ID
         self.actor_db_id = settings.NOTION_ACT_DB_ID
         self.actor_name_map = self._load_actor_name_map()
-        self.output_dir = settings.GITHUB_ICAL_DIR
-        self.ical_url = settings.GITHUB_ICAL_URL
-        self.github_repo = settings.ICAL_REPO
-        self.github_token = settings.ICAL_TOKEN
-        self.github_username = settings.ICAL_USERNAME
-        self.github_branch = getattr(settings, "GITHUB_BRANCH", "main")
+        self.output_dir = settings.GB_ICAL_DIR
+        self.ical_url = settings.GB_ICAL_URL
 
         os.makedirs(self.output_dir, exist_ok=True)
-        self._set_remote_url_with_token()
-        self._ensure_branch()
-
-    def _set_remote_url_with_token(self):
-        remote_url = f"https://{self.github_username}:{self.github_token}@github.com/{self.github_username}/{self.github_repo}.git"
-        subprocess.run(["git", "remote", "remove", "origin"], check=False)
-        print("🔗 Git remote URL 설정:", remote_url)
-        subprocess.run(["git", 'remote', 'add', 'origin', remote_url], check=True)
-
-    def _ensure_branch(self):
-        subprocess.run(["git", "fetch", "origin"], check=True)
-        subprocess.run(["git", "checkout", "-B", self.github_branch], check=True)
 
     def _find_page(self, ticket: TicketInfo) -> Optional[dict]:
         """
@@ -248,21 +231,8 @@ class NotionRepository:
             if isinstance(result, Exception):
                 logging.error(f"❌ 티켓 처리 실패: {ticket.title}", exc_info=result)
 
-        # 2. Git 작업은 마지막에 일괄 처리
-        try:
-            print("📦 Git 작업 시작")
-            subprocess.run(["git", "config", "--local", "user.email", "github-actions@github.com"], check=True)
-            subprocess.run(["git", "config", "--local", "user.name", "GitHub Actions"], check=True)
-
-            ics_files = glob.glob(f"{self.output_dir}/*.ics")
-            print(f"📁 {self.output_dir} 내 .ics 파일 수: {len(ics_files)}개")
-
-            subprocess.run(["git", "add"] + ics_files, check=True)
-            subprocess.run(["git", "commit", "-m", "Add all .ics"], check=True)
-            subprocess.run(["git", "push", "-u", "origin", self.github_branch], check=True)
-            print("✅ git push 완료")
-        except subprocess.CalledProcessError as e:
-            logging.error("❌ git push failed", exc_info=e)
+        ics_files = glob.glob(f"{self.output_dir}/*.ics")
+        print(f"📁 {self.output_dir} 내 .ics 파일 수: {len(ics_files)}개")
 
 
     def sync_existing_ticket_relations(self):

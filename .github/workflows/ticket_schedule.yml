@@ -35,9 +35,27 @@ jobs:
           NOTION_PAGE_ID: ${{ secrets.NOTION_PAGE_ID }}
           NOTION_DB_ID: ${{ secrets.NOTION_DB_ID }}
           NOTION_ACT_DB_ID: ${{ secrets.NOTION_ACT_DB_ID }}
-          ICAL_USERNAME: ${{ secrets.ICAL_USERNAME }}
-          ICAL_TOKEN: ${{ secrets.ICAL_TOKEN }}
-          ICAL_REPO: ${{ secrets.ICAL_REPO }}
+          GB_ICAL_DIR : ${{ secrets.GB_ICAL_DIR }}
+          GB_BRANCH : ${{ secrets.GB_BRANCH }}
+          GB_ICAL_URL : ${{ GB_ICAL_URL.GB_ICAL_DIR }}
           CHROME_BIN: /usr/bin/google-chrome  # ✅ 안정성 추가
           TZ: Asia/Seoul  # 타임존 설정
         run: python run.py
+
+      - name: Commit & Push .ics files
+        env:
+          GB_ICAL_DIR: ${{ secrets.GB_ICAL_DIR }}
+          GB_BRANCH: ${{ secrets.GB_BRANCH }}
+        run: |
+          git config --local user.email "github-actions@github.com"
+          git config --local user.name "GitHub Actions"
+
+          # 변경된 파일만 스테이징
+          git add $GB_ICAL_DIR/*.ics
+
+          # 변경이 있을 때만 커밋
+          git diff --cached --quiet || git commit -m "Update .ics schedule files"
+
+          # main 브랜치에 push
+          git push origin $GB_BRANCH
+

@@ -11,12 +11,9 @@ class Settings(BaseSettings):
     NOTION_PAGE_ID: str
     USER_AGENT: str = "Mozilla/5.0"
     HTTP_TIMEOUT: int = 10
-    ICAL_USERNAME: str
-    ICAL_TOKEN: str
-    ICAL_REPO: str
-    GITHUB_ICAL_DIR: str = "ical_exports"
-    GITHUB_ICAL_URL: str = "https://hamminkyung.github.io/notion-calendar-ics/"
-    GITHUB_BRANCH: str = "main"
+    GB_ICAL_DIR: str
+    GB_ICAL_URL: str
+    GB_BRANCH: str
 
 
     # .env에 값이 없으면 기본 9시간으로 설정
