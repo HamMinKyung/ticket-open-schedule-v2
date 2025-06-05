@@ -11,9 +11,9 @@ class Settings(BaseSettings):
     NOTION_PAGE_ID: str
     USER_AGENT: str = "Mozilla/5.0"
     HTTP_TIMEOUT: int = 10
-    GB_ICAL_DIR: str
+    GB_ICAL_DIR: str = "ical_exports"
     GB_ICAL_URL: str
-    GB_BRANCH: str
+    GB_BRANCH: str= "main"
 
 
     # .env에 값이 없으면 기본 9시간으로 설정
