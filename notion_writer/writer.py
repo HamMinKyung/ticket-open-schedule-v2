@@ -99,7 +99,7 @@ class NotionRepository:
                     if name in self.actor_name_map
                 ]
             },
-            # "등록 링크": {"url": ticket.ical_url}
+            "등록 링크": {"url": ticket.ical_url}
         }
 
         # 상세 링크
@@ -119,18 +119,6 @@ class NotionRepository:
             return [text[i: i + size] for i in range(0, len(text), size)]
 
         children: list[dict] = []
-        children.append(
-            {
-                "object": "block",
-                "type": "file",
-                "file": {
-                    "external": {
-                        "url": f"{ical_url}"
-                    }
-                }
-            }
-
-        )
         for key, value in content.items():
             # 섹션 헤딩
             children.append({
@@ -319,7 +307,7 @@ class NotionRepository:
         event.begin = ticket.open_datetime.astimezone(settings.user_timezone)
         event.end = event.begin + timedelta(minutes=30)
         event.location = ticket.venue
-        event.description = ", ".join(ticket.providers)
+        event.description = ", ".join(ticket.providers + self._extract_names_from_cast(ticket.cast))
         event.categories = {"티켓오픈"}
 
         # 알림 추가 방식 수정
