@@ -10,9 +10,9 @@ END:VALARM
 CATEGORIES:티켓오픈
 DESCRIPTION:놀티켓 
 DTEND:20250613T023000Z
-LOCATION:충무아트센터 중극장 블랙
+LOCATION:놀 서경스퀘어 스콘 2관(구. 인터파크 서경스퀘어)
 DTSTART:20250613T020000Z
-SUMMARY:티켓오픈 연극 〈킬 미 나우〉 : 연극열전10_여섯 번째 작품
-UID:70fb8ddf-469e-4abc-bc8e-e4f09c0b4df5@70fb.org
+SUMMARY:티켓오픈 ［피크닉#16］ 연극 〈디 이펙트(THE EFFECT)〉
+UID:e742dc04-f92e-4d64-9ba3-1dd608f4263e@e742.org
 END:VEVENT
 END:VCALENDAR
