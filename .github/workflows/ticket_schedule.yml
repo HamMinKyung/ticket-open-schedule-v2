@@ -2,16 +2,22 @@ name: Weekly Ticket Schedule
 
 on:
   schedule:
-    - cron:  '0 15 * * *'  # 매일 KST 00:00 (== UTC 15:00)
+    - cron:  '0 15 * * 0,3'  # 매주 일, 수요일 KST 00:00 (== UTC 15:00)
   workflow_dispatch:
 
 jobs:
   run-ticket-scraper:
-    runs-on: ubuntu-22.04  # 더 안정적으로
+    runs-on: ubuntu-22.04
+
+    permissions:
+      contents: write
+
 
     steps:
       - name: Checkout Repository
         uses: actions/checkout@v3
+        with:
+          fetch-depth: 0
 
       - name: Set up Python
         uses: actions/setup-python@v4
@@ -35,27 +41,31 @@ jobs:
           NOTION_PAGE_ID: ${{ secrets.NOTION_PAGE_ID }}
           NOTION_DB_ID: ${{ secrets.NOTION_DB_ID }}
           NOTION_ACT_DB_ID: ${{ secrets.NOTION_ACT_DB_ID }}
-          GB_ICAL_DIR : ${{ secrets.GB_ICAL_DIR }}
-          GB_BRANCH : ${{ secrets.GB_BRANCH }}
           GB_ICAL_URL : ${{ secrets.GB_ICAL_URL }}
-          CHROME_BIN: /usr/bin/google-chrome  # ✅ 안정성 추가
-          TZ: Asia/Seoul  # 타임존 설정
+          CHROME_BIN: /usr/bin/google-chrome
+          TZ: Asia/Seoul
         run: python run.py
 
-      - name: Commit & Push .ics files
-        env:
-          GB_ICAL_DIR: ${{ secrets.GB_ICAL_DIR }}
-          GB_BRANCH: ${{ secrets.GB_BRANCH }}
+      - name: Prepare for pushing .ics files to main branch
         run: |
           git config --local user.email "github-actions@github.com"
           git config --local user.name "GitHub Actions"
 
-          # 변경된 파일만 스테이징
-          git add $GB_ICAL_DIR/*.ics
+          git fetch origin main
+          git worktree add temp-main origin/main
 
-          # 변경이 있을 때만 커밋
+          rm -rf temp-main/ical_exports
+          mkdir -p temp-main/ical_exports
+          cp -r ical_exports/*.ics temp-main/ical_exports/
+
+      - name: Commit & Push .ics files to main
+        run: |
+          cd temp-main
+
+          git add ical_exports/*.ics
           git diff --cached --quiet || git commit -m "Update .ics schedule files"
+          git push origin HEAD:main
 
-          # main 브랜치에 push
-          git push origin $GB_BRANCH
-
+      - name: Cleanup
+        run: |
+          git worktree remove temp-main --force

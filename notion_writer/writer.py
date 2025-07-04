@@ -61,55 +61,55 @@ class NotionRepository:
         """
         local_dt = ticket.open_datetime.astimezone(settings.user_timezone).replace(tzinfo=settings.DEFAULT_TIMEZONE)
         iso_date = local_dt.isoformat(timespec="seconds")
-        props = {
-            "공연 제목": {
-                "title": [{"type": "text", "text": {"content": ticket.title}}]
-            },
-            "구분": {
-                "rich_text": [{"type": "text", "text": {"content": ticket.category}}]
-            },
-            "오픈 일시": {
-                "date": {"start": iso_date}
-            },
-            "오픈 회차": {
-                "rich_text": [{"type": "text", "text": {"content": ticket.round_info}}]
-            },
-            "오픈 타입": {
-                "multi_select": [{"name": name} for name in ticket.open_type_all]
-            },
-            "공연 장소": {
-                "rich_text": [{"type": "text", "text": {"content": ticket.venue}}]
-            },
-            # "상세 링크": {"url": ticket.detail_url},
-
-            "출연진": {
-                "rich_text": [{"type": "text", "text": {"content": ticket.cast}}]
-            },
-            "예매처": {
-                "multi_select": [{"name": name} for name in ticket.providers]
-            },
-            "단독 판매": {"checkbox": ticket.solo_sale},
-            "출연 배우": {
-                "relation": [
-                    {"id": self.actor_name_map[name]}
-                    for name in set(
-                        self._extract_names_from_cast(ticket.cast) +
-                        self._extract_names_from_cast(ticket.title)
-                    )
-                    if name in self.actor_name_map
-                ]
-            },
-            "등록 링크": {"url": ticket.ical_url}
-        }
 
         # 상세 링크
         for idx, url in enumerate(ticket.detail_url_all):
+            props = {
+                "공연 제목": {
+                    "title": [{"type": "text", "text": {"content": ticket.title}}]
+                },
+                "구분": {
+                    "rich_text": [{"type": "text", "text": {"content": ticket.category}}]
+                },
+                "오픈 일시": {
+                    "date": {"start": iso_date}
+                },
+                "오픈 회차": {
+                    "rich_text": [{"type": "text", "text": {"content": ticket.round_info}}]
+                },
+                "오픈 타입": {
+                    "multi_select": [{"name": name} for name in ticket.open_type_all]
+                },
+                "공연 장소": {
+                    "rich_text": [{"type": "text", "text": {"content": ticket.venue}}]
+                },
+                # "상세 링크": {"url": ticket.detail_url},
+
+                "출연진": {
+                    "rich_text": [{"type": "text", "text": {"content": ticket.cast}}]
+                },
+                "예매처": {
+                    "multi_select": [{"name": name} for name in ticket.providers]
+                },
+                "단독 판매": {"checkbox": ticket.solo_sale},
+                "출연 배우": {
+                    "relation": [
+                        {"id": self.actor_name_map[name]}
+                        for name in set(
+                            self._extract_names_from_cast(ticket.cast) +
+                            self._extract_names_from_cast(ticket.title)
+                        )
+                        if name in self.actor_name_map
+                    ]
+                },
+                "등록 링크": {"url": ticket.ical_url}
+            }
             key = "상세 링크" if idx == 0 else f"상세 링크{idx + 1}"
             props[key] = {"url": url}
 
         return props;
 
-    def _build_contents(self, content: dict) -> list[dict]:
+    def _build_contents(self, content: dict, ical_url: str) -> list[dict]:
         """
         TicketInfo.content 딕셔너리를 Notion 블록 리스트로 변환합니다.
         긴 텍스트(value)는 2000자씩 잘라 여러 paragraph 블록으로 분할 삽입합니다.
@@ -147,7 +147,7 @@ class NotionRepository:
             ical_url = self._generate_ics_and_push(ticket)
             ticket.ical_url = ical_url
             props = self._build_properties(ticket)
-            contents = self._build_contents(ticket.content)
+            contents = self._build_contents(ticket.content, ticket.ical_url)
 
             if existing:
                 page_id = existing["id"]
@@ -234,7 +234,6 @@ class NotionRepository:
         ics_files = glob.glob(f"{self.output_dir}/*.ics")
         print(f"📁 {self.output_dir} 내 .ics 파일 수: {len(ics_files)}개")
 
-
     def sync_existing_ticket_relations(self):
         pages = self._get_all_pages(self.database_id)
         print(" 🔄 기존 티켓 DB에서 출연진 필드 기반으로 출연 배우 Relation 갱신 시작", len(pages))
@@ -275,7 +274,6 @@ class NotionRepository:
             except Exception as ex:
                 print(f"❌ 갱신 실패: {title_str}", ex)
 
-
     def _get_all_pages(self, database_id: str) -> list:
         results = []
         start_cursor = None
@@ -295,7 +293,6 @@ class NotionRepository:
 
         return results
 
-
     def _generate_ics_and_push(self, ticket: TicketInfo) -> str:
         """
         티켓 정보를 기반으로 ICS 파일을 생성하고 github page에 업로드합니다.
@@ -310,7 +307,12 @@ class NotionRepository:
         event.begin = ticket.open_datetime.astimezone(settings.user_timezone)
         event.end = event.begin + timedelta(minutes=30)
         event.location = ticket.venue
-        event.description = ", ".join(ticket.providers)
+        # 출연 배우 이름 추출 (중복 호출 방지)
+        cast_names = self._extract_names_from_cast(ticket.cast)
+        title_names = self._extract_names_from_cast(ticket.title)
+        all_names = list(set(cast_names + title_names))
+
+        event.description = ", ".join(ticket.providers ) +" "+ ", ".join(all_names)
         event.categories = {"티켓오픈"}
 
         # 알림 추가 방식 수정
