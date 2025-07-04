@@ -24,7 +24,7 @@ class Settings(BaseSettings):
     CRAWLERS: Dict[str, Any] = {
         'inter_park': {
             'base_url': 'https://tickets.interpark.com',
-            'regions': ['SEOUL', 'GYEONGGI'],
+            'regions': ['SEOUL', 'GYEONGGI', 'BUSAN', 'ULSAN'],
             'list_endpoint': '/contents/api/open-notice/notice-list',
             'params': {
                 'goodsGenre': 'ALL',
