@@ -10,9 +10,9 @@ END:VALARM
 CATEGORIES:티켓오픈
 DESCRIPTION:놀티켓 
 DTEND:20250725T063000Z
-LOCATION:광주예술의전당 대극장
+LOCATION:코엑스 신한카드 아티움
 DTSTART:20250725T060000Z
-SUMMARY:티켓오픈 2025 사운드 아카이브 : 디 오케스트라 (광주)
-UID:f3f1b952-c11f-41dc-a111-a14c6c58594a@f3f1.org
+SUMMARY:티켓오픈 뮤지컬〈오늘 밤\, 세계에서 이 사랑이 사라진다 해도〉
+UID:9a42d4a7-9268-4e6e-82ff-049da6849fc3@9a42.org
 END:VEVENT
 END:VCALENDAR
