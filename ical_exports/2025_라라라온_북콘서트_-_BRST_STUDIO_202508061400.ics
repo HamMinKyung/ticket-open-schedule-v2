@@ -1,0 +1,18 @@
+BEGIN:VCALENDAR
+VERSION:2.0
+PRODID:ics.py - http://git.io/lLljaA
+BEGIN:VEVENT
+BEGIN:VALARM
+TRIGGER:-PT30M
+ACTION:DISPLAY
+DESCRIPTION:Reminder
+END:VALARM
+CATEGORIES:티켓오픈
+DESCRIPTION:멜론티켓 
+DTEND:20250806T053000Z
+LOCATION:[서울] 공상온도\, 라이브앤라우드\, BRST STUDIO\, 스페이스 한강\, 언플러그드 홍대\, 얼라이브홀\, 우주정거장\, 채널 1969\, 클럽 샤프 [대전] 비호소\, 인터플레이 [강원] 소극장 초속 [전주] 프키 [포항] 롴돰 로컬다움 [순천] 아트홀 아고고
+DTSTART:20250806T050000Z
+SUMMARY:티켓오픈 2025 라라라온 북콘서트 - BRST STUDIO
+UID:af70ed8c-2578-4dd5-8a98-3f17b2a571a0@af70.org
+END:VEVENT
+END:VCALENDAR
