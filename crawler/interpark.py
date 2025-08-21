@@ -142,7 +142,7 @@ class InterParkCrawler(AsyncCrawlerBase):
                 solo_sale=solo_sale,  # 단독 판매
                 content=content,  # 내용
                 source="놀티켓",  # 예매처(원본)
-                region= item.get("region", "-"),  # 지역
+                regions= item.get("region", "-"),  # 지역
             ))
 
         return tickets

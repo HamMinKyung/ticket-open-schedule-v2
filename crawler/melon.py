@@ -130,7 +130,8 @@ class MelonCrawler(AsyncCrawlerBase):
                 providers={"멜론티켓"},
                 solo_sale=only_sale,
                 content=content,
-                source="멜론티켓"
+                source="멜론티켓",
+                regions=regions,
             ))
 
         return tickets
