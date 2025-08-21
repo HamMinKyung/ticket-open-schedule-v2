@@ -11,6 +11,7 @@ from models.ticket import TicketInfo
 from utils.utils import normalize_date_string
 import random
 
+
 class MelonCrawler(AsyncCrawlerBase):
     def __init__(self, date_range: Tuple[datetime, datetime]):
         super().__init__(date_range)
@@ -24,8 +25,6 @@ class MelonCrawler(AsyncCrawlerBase):
             "Referer": self.cfg['Referer'],
             "User-Agent": random.choice(ua_list)
         }
-
-
 
     async def _fetch_list(self, session: aiohttp.ClientSession) -> List[Dict[str, Any]]:
         items: List[Dict[str, Any]] = []
@@ -47,15 +46,15 @@ class MelonCrawler(AsyncCrawlerBase):
                     title_tag = li.select_one("a.tit")
                     if not title_tag:
                         continue
-                    raw_date    = li.select_one("span.date").get_text(strip=True)
-                    pass_check  = "오픈일정 보기" in raw_date
-                    open_date   = None
+                    raw_date = li.select_one("span.date").get_text(strip=True)
+                    pass_check = "오픈일정 보기" in raw_date
+                    open_date = None
 
                     # 날짜 문구이면서 범위 내 항목만 추가
                     if not pass_check:
                         try:
-                            norm    = normalize_date_string(raw_date)
-                            dt      = datetime.strptime(norm, "%Y.%m.%d %H:%M")
+                            norm = normalize_date_string(raw_date)
+                            dt = datetime.strptime(norm, "%Y.%m.%d %H:%M")
                             if not (self.start <= dt <= self.end):
                                 continue
                             open_date = dt
@@ -63,10 +62,10 @@ class MelonCrawler(AsyncCrawlerBase):
                             continue
 
                     items.append({
-                        "title_tag":      title_tag,
+                        "title_tag": title_tag,
                         "pass_date_check": pass_check,
-                        "open_date":      open_date,
-                        "genre":          genre_name
+                        "open_date": open_date,
+                        "genre": genre_name
                     })
             # 필터링된 항목만 반환
         return items
@@ -78,7 +77,7 @@ class MelonCrawler(AsyncCrawlerBase):
     ) -> List[TicketInfo]:
         cfg = self.cfg
         # 상세 페이지 URL
-        href       = item['title_tag']['href'].lstrip("./")
+        href = item['title_tag']['href'].lstrip("./")
         detail_url = f"{cfg['base_url']}/csoon/{href}"
 
         headers = self._get_headers()
@@ -88,11 +87,13 @@ class MelonCrawler(AsyncCrawlerBase):
         soup = BeautifulSoup(html, 'html.parser')
 
         # 기본 정보 파싱
-        title       = soup.select_one("p.tit_consert").get_text(strip=True).strip()
+        title = soup.select_one("p.tit_consert").get_text(strip=True).strip()
         round_info, venue = self._parse_base_box(soup)
-        only_sale   = bool(soup.select_one(cfg['detail_selectors']['solo_icon']))
-        content     = self._parse_content(soup)
-        cast        = self._parse_cast_info(soup, content.get("출연진", "-"))
+        only_sale = bool(soup.select_one(cfg['detail_selectors']['solo_icon']))
+        content = self._parse_content(soup)
+        cast = self._parse_cast_info(soup, content.get("출연진", "-"))
+        REGIONS_KEYWORDS = ("서울", "인천", "경기", "부산", "울산")
+        regions = next((kw for kw in REGIONS_KEYWORDS if kw in venue), "서울")
 
         tickets: List[TicketInfo] = []
 
@@ -101,34 +102,35 @@ class MelonCrawler(AsyncCrawlerBase):
             for label, od in self._parse_open_dates(soup):
                 if self.start <= od <= self.end:
                     tickets.append(TicketInfo(
-                        title          = title.strip(),
-                        open_datetime  = od,
-                        round_info     = round_info,
-                        cast           = cast,
-                        detail_url     = detail_url,
-                        category       = item['genre'].strip(),
-                        open_type      = label.strip(),
-                        venue          = venue,
-                        providers      = {"멜론티켓"},
-                        solo_sale      = only_sale,
-                        content        = content,
-                        source         = "멜론티켓"
+                        title=title.strip(),
+                        open_datetime=od,
+                        round_info=round_info,
+                        cast=cast,
+                        detail_url=detail_url,
+                        category=item['genre'].strip(),
+                        open_type=label.strip(),
+                        venue=venue,
+                        providers={"멜론티켓"},
+                        solo_sale=only_sale,
+                        content=content,
+                        source="멜론티켓",
+                        regions=regions,
                     ))
         # “티켓오픈” 한 건만
         else:
             tickets.append(TicketInfo(
-                title          = title.strip(),
-                open_datetime  = item['open_date'],
-                round_info     = round_info,
-                cast           = cast,
-                detail_url     = detail_url,
-                category       = item['genre'].strip(),
-                open_type      = "티켓오픈".strip(),
-                venue          = venue,
-                providers      = {"멜론티켓"},
-                solo_sale      = only_sale,
-                content        = content,
-                source         = "멜론티켓"
+                title=title.strip(),
+                open_datetime=item['open_date'],
+                round_info=round_info,
+                cast=cast,
+                detail_url=detail_url,
+                category=item['genre'].strip(),
+                open_type="티켓오픈".strip(),
+                venue=venue,
+                providers={"멜론티켓"},
+                solo_sale=only_sale,
+                content=content,
+                source="멜론티켓"
             ))
 
         return tickets
@@ -163,9 +165,9 @@ class MelonCrawler(AsyncCrawlerBase):
     def _parse_base_box(self, soup: BeautifulSoup) -> Tuple[str, str]:
         base = soup.select_one("div.box_concert_time")
         round_info = "-"
-        place      = "-"
+        place = "-"
         if base:
-            for tag in base.find_all(['span','p','div']):
+            for tag in base.find_all(['span', 'p', 'div']):
                 txt = tag.get_text(strip=True)
                 if not txt:
                     continue
@@ -182,10 +184,10 @@ class MelonCrawler(AsyncCrawlerBase):
                 soup.select("dd.txt_date")
         ):
             label = dt_tag.get_text(strip=True).rstrip(":")
-            raw   = dd_tag.get_text(strip=True).split(":",1)[-1].strip()
+            raw = dd_tag.get_text(strip=True).split(":", 1)[-1].strip()
             try:
                 norm = normalize_date_string(raw)
-                od   = datetime.strptime(norm, "%Y년 %m월 %d일  %H:%M")
+                od = datetime.strptime(norm, "%Y년 %m월 %d일  %H:%M")
                 results.append((label, od))
             except:
                 continue
@@ -244,4 +246,3 @@ class MelonCrawler(AsyncCrawlerBase):
                 result["출연진"] = "\n".join(cast_lines)
 
         return result
-

@@ -27,15 +27,16 @@ class InterParkCrawler(AsyncCrawlerBase):
                 data = await res.json()
             # openDateStr 있고 self.start <=  <= self.end  항목만 필터링
             result.extend(
-                filter(
-                    lambda item: (
-                        # openDateStr이 비어있지 않고
-                            (d := item.get("openDateStr")) and
-                            # openDateStr을 datetime으로 변환하고
-                            (open_time := datetime.strptime(d, "%Y-%m-%d %H:%M:%S")) and
-                            # self.start와 self.end 사이에 있는지 확인
-                            (self.start <= open_time <= self.end)
-                    ), data
+                map(
+                    lambda item: {**item, "region": region},
+                    filter(
+                        lambda item: (
+                                (d := item.get("openDateStr")) and
+                                (open_time := datetime.strptime(d, "%Y-%m-%d %H:%M:%S")) and
+                                (self.start <= open_time <= self.end)
+                        ),
+                        data,
+                    ),
                 )
             )
         return result
@@ -68,11 +69,11 @@ class InterParkCrawler(AsyncCrawlerBase):
         return None
 
     async def _fetch_detail(self, session, item: Dict[str, Any]) -> List[TicketInfo]:
-        cfg    = settings.CRAWLERS['inter_park']
+        cfg = settings.CRAWLERS['inter_park']
         notice = item["noticeId"]
-        url    = f"{cfg['base_url']}{cfg['detail_endpoint']}{notice}"
-        html   = await (await session.get(url)).text()
-        soup   = BeautifulSoup(html, "html.parser")
+        url = f"{cfg['base_url']}{cfg['detail_endpoint']}{notice}"
+        html = await (await session.get(url)).text()
+        soup = BeautifulSoup(html, "html.parser")
 
         # 상세 URL 결정
         detail_url = (
@@ -94,8 +95,8 @@ class InterParkCrawler(AsyncCrawlerBase):
             )
 
         # 공연 정보 파싱
-        perf_info  = content.get(cfg["contents"]["performance_info"], "")
-        venue      = self._parse_perf(perf_info, cfg["contents"]["venue"]) or item.get("venueName", "")
+        perf_info = content.get(cfg["contents"]["performance_info"], "")
+        venue = self._parse_perf(perf_info, cfg["contents"]["venue"]) or item.get("venueName", "")
         round_info = (
                 self._parse_perf(perf_info, cfg["contents"]["open_period"])
                 or self._parse_perf(perf_info, cfg["contents"]["open_period2"])
@@ -104,15 +105,16 @@ class InterParkCrawler(AsyncCrawlerBase):
                 or self._parse_perf(perf_info, cfg["contents"]["datetime"])
                 or "-"
         )
-        cast       = re.split( r'\[?［?creative team|creative］?\]?', content.get(cfg["contents"]["cast"], "-"), maxsplit=1, flags=re.IGNORECASE)[0].strip()
-        solo_sale  = item.get("goodsSeatTypeStr") == "단독판매"
+        cast = re.split(r'\[?［?creative team|creative］?\]?', content.get(cfg["contents"]["cast"], "-"), maxsplit=1,
+                        flags=re.IGNORECASE)[0].strip()
+        solo_sale = item.get("goodsSeatTypeStr") == "단독판매"
 
         # 일정 추출 및 필터링
         schedules = []
         for box in soup.select(cfg["selectors"]["schedule_box"]):
             title = box.select_one(cfg["selectors"]["schedule_title"]).get_text(strip=True)
-            raw   = normalize_date_string(box.select_one(cfg["selectors"]["schedule_date"]).get_text(strip=True))
-            dt    = datetime.strptime(
+            raw = normalize_date_string(box.select_one(cfg["selectors"]["schedule_date"]).get_text(strip=True))
+            dt = datetime.strptime(
                 f"{settings.current_year}.{raw}",
                 "%Y.%m.%d %H:%M"
             )
@@ -128,18 +130,19 @@ class InterParkCrawler(AsyncCrawlerBase):
         tickets: List[TicketInfo] = []
         for open_type, open_dt in schedules:
             tickets.append(TicketInfo(
-                title         = item.get("title", "-").strip(),     # 공연 제목
-                open_datetime = open_dt,                # 오픈 일시
-                round_info    = round_info,             # 오픈 회차
-                cast          = cast,                   # 출연진
-                detail_url    = detail_url,                # 상세 링크
-                category      = item.get("goodsGenreStr", "-").strip(), # 구분
-                open_type     = open_type.strip(),                  # 오픈 타입
-                venue         = venue.strip(),          # 공연 장소
-                providers     = {"놀티켓"},   # 예매처
-                solo_sale     = solo_sale,      # 단독 판매
-                content       = content,        # 내용
-                source        = "놀티켓" # 예매처(원본)
+                title=item.get("title", "-").strip(),  # 공연 제목
+                open_datetime=open_dt,  # 오픈 일시
+                round_info=round_info,  # 오픈 회차
+                cast=cast,  # 출연진
+                detail_url=detail_url,  # 상세 링크
+                category=item.get("goodsGenreStr", "-").strip(),  # 구분
+                open_type=open_type.strip(),  # 오픈 타입
+                venue=venue.strip(),  # 공연 장소
+                providers={"놀티켓"},  # 예매처
+                solo_sale=solo_sale,  # 단독 판매
+                content=content,  # 내용
+                source="놀티켓",  # 예매처(원본)
+                region= item.get("region", "-"),  # 지역
             ))
 
         return tickets

@@ -119,6 +119,7 @@ class SacCrawler(AsyncCrawlerBase):
                     solo_sale=schedule["solo_sale"],
                     content=contents,
                     source="예술의전당",
+                    regions="서울",
                 ))
 
             return tickets

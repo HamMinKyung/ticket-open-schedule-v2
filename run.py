@@ -62,8 +62,8 @@ async def main():
     for provider, count in counter.items():
         print(f"site {provider}: {count}")
 
-    repo = NotionRepository()
-    await repo.write_all(merged)
+    # repo = NotionRepository()
+    # await repo.write_all(merged)
 
     # for ticket in merged:
     #     print(f"제목: {ticket.title}")

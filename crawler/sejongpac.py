@@ -223,7 +223,8 @@ class SejongPac(AsyncCrawlerBase):
                 providers={"세종문화회관"},  # 예매처
                 solo_sale=solo_sale,  # 단독 판매
                 content=content,  # 내용
-                source="세종문화회관"  # 예매처(원본)
+                source="세종문화회관",  # 예매처(원본)
+                regions= "서울"  # 지역 (세종문화회관은 서울)
             ))
 
         return tickets
