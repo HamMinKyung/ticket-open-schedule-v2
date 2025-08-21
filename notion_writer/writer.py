@@ -102,7 +102,10 @@ class NotionRepository:
                         if name in self.actor_name_map
                     ]
                 },
-                "등록 링크": {"url": ticket.ical_url}
+                "등록 링크": {"url": ticket.ical_url},
+                "지역": {
+                    "select": {"name": ticket.regions}
+                }
             }
             key = "상세 링크" if idx == 0 else f"상세 링크{idx + 1}"
             props[key] = {"url": url}
@@ -180,7 +183,7 @@ class NotionRepository:
                     block_id=page_id,
                     children=contents
                 )
-                print(f"🔁 업데이트 및 블록 교체 완료: {ticket.title} (page_id={page_id})")
+                print(f"🔁 업데이트 및 블록 교체 완료: {ticket.title} {ticket.regions} (page_id={page_id})")
 
             else:
                 # 생성 시 children 옵션으로 한 번에 삽입
