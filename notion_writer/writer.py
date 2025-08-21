@@ -183,7 +183,7 @@ class NotionRepository:
                     block_id=page_id,
                     children=contents
                 )
-                print(f"🔁 업데이트 및 블록 교체 완료: {ticket.title} {ticket.regions} (page_id={page_id})")
+                print(f"🔁 업데이트 및 블록 교체 완료: {ticket.title} (page_id={page_id})")
 
             else:
                 # 생성 시 children 옵션으로 한 번에 삽입
@@ -196,7 +196,7 @@ class NotionRepository:
                 print(f"🆕 생성 및 블록 삽입 완료: {ticket.title} (page_id={page_id})")
 
         except Exception as ex:
-            print(f"❌ Notion 처리 실패: {ticket.title}", ex)
+            print(f"❌ Notion 처리 실패: {ticket.title}, {ticket}", ex)
 
     # def write_all(self, tickets: List[TicketInfo]) -> None:
     #     """
