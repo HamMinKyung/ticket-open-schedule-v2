@@ -126,6 +126,10 @@ class InterParkCrawler(AsyncCrawlerBase):
         if not schedules:
             return []
 
+        # 지역 설정
+        CONVERT_REGIONS = {"SEOUL": "서울", "GYEONGGI": "경기", "BUSAN": "부산", "ULSAN": "울산"}
+        regions = CONVERT_REGIONS[item.get("region", "SEOUL")]
+
         # 모든 유효 일정에 대해 TicketInfo 생성
         tickets: List[TicketInfo] = []
         for open_type, open_dt in schedules:
@@ -142,7 +146,7 @@ class InterParkCrawler(AsyncCrawlerBase):
                 solo_sale=solo_sale,  # 단독 판매
                 content=content,  # 내용
                 source="놀티켓",  # 예매처(원본)
-                regions= item.get("region", "-"),  # 지역
+                regions= regions,  # 지역
             ))
 
         return tickets
