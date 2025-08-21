@@ -10,9 +10,9 @@ END:VALARM
 CATEGORIES:티켓오픈
 DESCRIPTION:놀티켓 
 DTEND:20250826T023000Z
-LOCATION:et theatre 1 (이티 씨어터 원)
+LOCATION:티켓링크 1975 씨어터 (능동 어린이회관 내)
 DTSTART:20250826T020000Z
-SUMMARY:티켓오픈 뮤지컬 〈르 마스크〉
-UID:b9ffa60a-0d65-43e6-8af4-f4864e35076f@b9ff.org
+SUMMARY:티켓오픈 뮤지컬 〈사랑의 하츄핑〉 - 티켓링크 1975 씨어터 개관작
+UID:f128eb03-1fdf-4d70-a011-7ea53a31ebb9@f128.org
 END:VEVENT
 END:VCALENDAR
