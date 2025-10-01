@@ -10,8 +10,9 @@ END:VALARM
 CATEGORIES:티켓오픈
 DESCRIPTION:놀티켓 
 DTEND:20251002T053000Z
+LOCATION:티켓링크 1975 씨어터 (구. 능동 어린이회관)
 DTSTART:20251002T050000Z
-SUMMARY:티켓오픈 히사이시 조 영화음악 콘서트 2025_서울 파이널
-UID:f01db2fe-06c3-408a-a938-afe823270983@f01d.org
+SUMMARY:티켓오픈 뮤지컬 헬로카봇 스페셜 시즌9 〈전설의 용사를 찾아서〉 - 서울앵콜
+UID:8d41ca01-dd5e-4c55-974b-ede86e8f378f@8d41.org
 END:VEVENT
 END:VCALENDAR
