@@ -13,8 +13,7 @@ class Settings(BaseSettings):
     HTTP_TIMEOUT: int = 10
     GB_ICAL_DIR: str = "ical_exports"
     GB_ICAL_URL: str
-    GB_BRANCH: str= "main"
-
+    GB_BRANCH: str = "main"
 
     # .env에 값이 없으면 기본 9시간으로 설정
     TIMEZONE_OFFSET_HOURS: int = 9
@@ -97,13 +96,29 @@ class Settings(BaseSettings):
         'sac': {
             'base_url': "https://www.sac.or.kr",
             'list_endpoint': "/site/main/show/dataTicketList",
-            "params" : {
+            "params": {
                 "pageSize": 10,
                 "ticketOpenFlag": "Y",
                 "sortOrder": "B.TICKET_OPEN_DATE",
                 "sortDirection": "DESC",
             },
-            "detail_endpoint" :"/site/main/show/show_view?SN="
+            "detail_endpoint": "/site/main/show/show_view?SN="
+        },
+        'ticket_link': {
+            'base_url': "https://www.ticketlink.co.kr",
+            'list_endpoint': '/help/getNoticeList',
+            "params": {
+                "page": 1,
+                "noticeCategoryCode": "TICKET_OPEN",
+                "title": "",
+                "sortCode": "OPEN_DATE",
+            },
+            "headers" : {
+                "Referer": "https://www.ticketlink.co.kr/help/notice",
+                "Accept": "application/json",
+                 "X-Requested-With": "XMLHttpRequest",
+            },
+            "detail_endpoint": "/help/notice/",
         }
     }
 
