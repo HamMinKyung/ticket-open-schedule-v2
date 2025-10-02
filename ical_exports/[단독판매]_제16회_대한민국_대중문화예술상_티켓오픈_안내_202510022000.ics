@@ -8,11 +8,11 @@ ACTION:DISPLAY
 DESCRIPTION:Reminder
 END:VALARM
 CATEGORIES:티켓오픈
-DESCRIPTION:멜론티켓 
+DESCRIPTION:티켓링크 
 DTEND:20251002T113000Z
-LOCATION:5F Live Office @ dabubucompany
+LOCATION:국립극장 해오름극장
 DTSTART:20251002T110000Z
-SUMMARY:티켓오픈 2025 live workspace ‘이제’ vol.08 jeonju
-UID:4eacd430-acd1-4582-87c9-a758c7874265@4eac.org
+SUMMARY:티켓오픈 [단독판매] 제16회 대한민국 대중문화예술상 티켓오픈 안내
+UID:66f4b58a-5d26-435d-bdb7-63a123bedb2c@66f4.org
 END:VEVENT
 END:VCALENDAR
