@@ -28,8 +28,8 @@ class NotionRepository:
         self.database_id = database_id or settings.NOTION_DB_ID
         self.actor_db_id = settings.NOTION_ACT_DB_ID
         self.actor_name_map = self._load_actor_name_map()
-        self.title_db_id = settings.NOTION_TITLE_DB_ID
-        self.title_name_map = self._load_title_name_map()
+        # self.title_db_id = settings.NOTION_TITLE_DB_ID
+        # self.title_name_map = self._load_title_name_map()
 
         self.output_dir = settings.GB_ICAL_DIR
         self.ical_url = settings.GB_ICAL_URL
@@ -66,16 +66,16 @@ class NotionRepository:
         iso_date = local_dt.isoformat(timespec="seconds")
 
         # Find matching title from title_name_map
-        matched_titles = [
-            title
-            for title in self.title_name_map.keys()
-            if title in ticket.title
-        ]
-        title_relation = []
-        if matched_titles:
-            best_match = max(matched_titles, key=len)
-            title_id = self.title_name_map[best_match]
-            title_relation.append({"id": title_id})
+        # matched_titles = [
+        #     title
+        #     for title in self.title_name_map.keys()
+        #     if title in ticket.title
+        # ]
+        # title_relation = []
+        # if matched_titles:
+        #     best_match = max(matched_titles, key=len)
+        #     title_id = self.title_name_map[best_match]
+        #     title_relation.append({"id": title_id})
 
         props = {
             "공연 제목": {
@@ -115,9 +115,9 @@ class NotionRepository:
                     if name in self.actor_name_map
                 ]
             },
-            "follow 공연명": {
-                "relation": title_relation
-            },
+            # "follow 공연명": {
+            #     "relation": title_relation
+            # },
             "등록 링크": {"url": ticket.ical_url},
             "지역": {
                 "select": {"name": ticket.regions}
