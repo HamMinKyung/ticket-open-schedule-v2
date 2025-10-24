@@ -42,7 +42,7 @@ class NotionRepository:
         """
         local_dt = ticket.open_datetime.astimezone(settings.user_timezone).replace(tzinfo=settings.DEFAULT_TIMEZONE)
         iso_date = local_dt.isoformat(timespec="seconds")
-        response = self.client.databases.query(
+        response = self.client.databases.list(
             database_id=self.database_id,
             filter={
                 "and": [
@@ -353,7 +353,7 @@ class NotionRepository:
             if start_cursor:
                 params["start_cursor"] = start_cursor
 
-            response = self.client.databases.query(**params)
+            response = self.client.databases.list(**params)
             results.extend(response.get("results", []))
 
             if response.get("has_more"):
