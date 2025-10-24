@@ -28,6 +28,9 @@ class NotionRepository:
         self.database_id = database_id or settings.NOTION_DB_ID
         self.actor_db_id = settings.NOTION_ACT_DB_ID
         self.actor_name_map = self._load_actor_name_map()
+        self.title_db_id = settings.NOTION_TITLE_DB_ID
+        self.title_name_map = self._load_title_name_map()
+
         self.output_dir = settings.GB_ICAL_DIR
         self.ical_url = settings.GB_ICAL_URL
 
@@ -62,55 +65,71 @@ class NotionRepository:
         local_dt = ticket.open_datetime.astimezone(settings.user_timezone).replace(tzinfo=settings.DEFAULT_TIMEZONE)
         iso_date = local_dt.isoformat(timespec="seconds")
 
+        # Find matching title from title_name_map
+        matched_titles = [
+            title
+            for title in self.title_name_map.keys()
+            if title in ticket.title
+        ]
+        title_relation = []
+        if matched_titles:
+            best_match = max(matched_titles, key=len)
+            title_id = self.title_name_map[best_match]
+            title_relation.append({"id": title_id})
+
+        props = {
+            "공연 제목": {
+                "title": [{"type": "text", "text": {"content": ticket.title}}]
+            },
+            "구분": {
+                "rich_text": [{"type": "text", "text": {"content": ticket.category}}]
+            },
+            "오픈 일시": {
+                "date": {"start": iso_date}
+            },
+            "오픈 회차": {
+                "rich_text": [{"type": "text", "text": {"content": ticket.round_info}}]
+            },
+            "오픈 타입": {
+                "multi_select": [{"name": name} for name in ticket.open_type_all]
+            },
+            "공연 장소": {
+                "rich_text": [{"type": "text", "text": {"content": ticket.venue}}]
+            },
+            # "상세 링크": {"url": ticket.detail_url},
+
+            "출연진": {
+                "rich_text": [{"type": "text", "text": {"content": ticket.cast}}]
+            },
+            "예매처": {
+                "multi_select": [{"name": name} for name in ticket.providers]
+            },
+            "단독 판매": {"checkbox": ticket.solo_sale},
+            "출연 배우": {
+                "relation": [
+                    {"id": self.actor_name_map[name]}
+                    for name in set(
+                        self._extract_names_from_cast(ticket.cast) +
+                        self._extract_names_from_cast(ticket.title)
+                    )
+                    if name in self.actor_name_map
+                ]
+            },
+            "follow 공연명": {
+                "relation": title_relation
+            },
+            "등록 링크": {"url": ticket.ical_url},
+            "지역": {
+                "select": {"name": ticket.regions}
+            }
+        }
+
         # 상세 링크
         for idx, url in enumerate(ticket.detail_url_all):
-            props = {
-                "공연 제목": {
-                    "title": [{"type": "text", "text": {"content": ticket.title}}]
-                },
-                "구분": {
-                    "rich_text": [{"type": "text", "text": {"content": ticket.category}}]
-                },
-                "오픈 일시": {
-                    "date": {"start": iso_date}
-                },
-                "오픈 회차": {
-                    "rich_text": [{"type": "text", "text": {"content": ticket.round_info}}]
-                },
-                "오픈 타입": {
-                    "multi_select": [{"name": name} for name in ticket.open_type_all]
-                },
-                "공연 장소": {
-                    "rich_text": [{"type": "text", "text": {"content": ticket.venue}}]
-                },
-                # "상세 링크": {"url": ticket.detail_url},
-
-                "출연진": {
-                    "rich_text": [{"type": "text", "text": {"content": ticket.cast}}]
-                },
-                "예매처": {
-                    "multi_select": [{"name": name} for name in ticket.providers]
-                },
-                "단독 판매": {"checkbox": ticket.solo_sale},
-                "출연 배우": {
-                    "relation": [
-                        {"id": self.actor_name_map[name]}
-                        for name in set(
-                            self._extract_names_from_cast(ticket.cast) +
-                            self._extract_names_from_cast(ticket.title)
-                        )
-                        if name in self.actor_name_map
-                    ]
-                },
-                "등록 링크": {"url": ticket.ical_url},
-                "지역": {
-                    "select": {"name": ticket.regions}
-                }
-            }
             key = "상세 링크" if idx == 0 else f"상세 링크{idx + 1}"
             props[key] = {"url": url}
 
-        return props;
+        return props
 
     def _build_contents(self, content: dict, ical_url: str) -> list[dict]:
         """
@@ -213,6 +232,14 @@ class NotionRepository:
             if p["properties"]["이름"]["title"]
         }
 
+    def _load_title_name_map(self) -> dict:
+        results = self._get_all_pages(self.title_db_id)
+        return {
+            p["properties"]["공연명"]["title"][0]["plain_text"]: p["id"]
+            for p in results
+            if p["properties"]["공연명"]["title"]
+        }
+
     def _extract_names_from_cast(self, cast_text: str) -> list[str]:
         matched_names = []
         for name in self.actor_name_map.keys():
@@ -276,6 +303,46 @@ class NotionRepository:
                 print(f"✅ 갱신 완료: {title_str}")
             except Exception as ex:
                 print(f"❌ 갱신 실패: {title_str}", ex)
+
+    def sync_existing_ticket_relations_2(self):
+        pages = self._get_all_pages(self.database_id)
+        print(" 🔄 기존 티켓 DB에서 공연제목 필드 기반으로 공연 Relation 갱신 시작", len(pages))
+        for page in pages:
+            page_id = page["id"]
+            title_property = page["properties"].get("공연 제목", {}).get("title", [])
+            page_title = title_property[0]["plain_text"] if title_property else ""
+
+            if not page_title:
+                continue
+
+            matched_titles = [
+                title_from_map
+                for title_from_map in self.title_name_map.keys()
+                if title_from_map in page_title
+            ]
+
+            if not matched_titles:
+                continue
+
+            # 가장 긴 제목을 선택하여 가장 구체적인 항목으로 매칭
+            best_match = max(matched_titles, key=len)
+            matched_title_id = self.title_name_map[best_match]
+
+            try:
+                self.client.pages.update(
+                    page_id=page_id,
+                    properties={
+                        "follow 공연명": {
+                            "relation": [{"id": matched_title_id}]
+                        }
+                    }
+                )
+                print(f"✅ 갱신 완료: {page_title} -> {best_match}")
+            except Exception as ex:
+                print(f"❌ 갱신 실패: {page_title}", ex)
+
+
+
 
     def _get_all_pages(self, database_id: str) -> list:
         results = []
