@@ -3,7 +3,7 @@ from datetime import datetime
 from typing import List, OrderedDict, Tuple
 
 from models.ticket import TicketInfo
-from utils.utils import normalize_title_key
+from utils.utils import normalize_title
 
 
 def merge_ticket_sources(tickets: List[TicketInfo]) -> List[TicketInfo]:
@@ -15,7 +15,7 @@ def merge_ticket_sources(tickets: List[TicketInfo]) -> List[TicketInfo]:
         tk.open_type_all.add(tk.open_type)
 
         # 2) title 정규화 및 키 생성
-        normalized_title = normalize_title_key(tk.title)
+        normalized_title = normalize_title(tk.title)
         tk.title = normalized_title
         key = (normalized_title, tk.open_datetime.strftime("%Y-%m-%d %H:%M"))
 
