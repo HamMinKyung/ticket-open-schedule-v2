@@ -39,8 +39,9 @@ class NotionRepository:
         """
         local_dt = ticket.open_datetime.astimezone(settings.user_timezone).replace(tzinfo=settings.DEFAULT_TIMEZONE)
         iso_date = local_dt.isoformat(timespec="seconds")
-        response = self.client.databases.query(
-            database_id=self.database_id,
+        ds_id = self._resolve_data_source_id(self.database_id)
+        response = self.client.data_sources.query(
+            data_source_id=ds_id,
             filter={
                 "and": [
                     {"property": "공연 제목", "title": {"equals": ticket.title}},
@@ -188,7 +189,7 @@ class NotionRepository:
             else:
                 # 생성 시 children 옵션으로 한 번에 삽입
                 created = self.client.pages.create(
-                    parent={"database_id": self.database_id},
+                    parent={"type": "data_source_id", "data_source_id": self._resolve_data_source_id(self.database_id)},
                     properties=props,
                     children=contents
                 )
@@ -280,13 +281,14 @@ class NotionRepository:
     def _get_all_pages(self, database_id: str) -> list:
         results = []
         start_cursor = None
+        ds_id = self._resolve_data_source_id(database_id)
 
         while True:
-            params = {"database_id": database_id}
+            params = {"data_source_id": ds_id}
             if start_cursor:
                 params["start_cursor"] = start_cursor
 
-            response = self.client.databases.query(**params)
+            response = self.client.data_sources.query(**params)
             results.extend(response.get("results", []))
 
             if response.get("has_more"):
@@ -336,3 +338,20 @@ class NotionRepository:
             f.write(cal.serialize())
 
         return f"{self.ical_url}{self.output_dir}/{file_name}"
+
+    def _resolve_data_source_id(self, database_or_data_source_id: str) -> str:
+        """
+        DB ID를 받으면 그 아래 단일 data source의 ID를 찾아 반환.
+        이미 data_source_id를 준 경우에도 그대로 동작하도록 시도-예외 방식 사용.
+        """
+        try:
+            # 이미 data source일 가능성
+            self.client.data_sources.retrieve(data_source_id=database_or_data_source_id)
+            return database_or_data_source_id
+        except Exception:
+            db = self.client.databases.retrieve(database_id=database_or_data_source_id)
+            # 단일 소스 가정: 첫 번째 data_source를 사용
+            data_sources = db.get("data_sources", [])
+            if not data_sources:
+                raise RuntimeError("Database has no data_sources; share/permissions or structure issue.")
+            return data_sources[0]["id"]
