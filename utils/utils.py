@@ -13,7 +13,8 @@ def normalize_title(text: str) -> str:
     # 괄호와 그 안의 내용 제거 (e.g., (서울), [앵콜])
     text = re.sub(r'\s*[\[(].*?[\])]\s*', ' ', text)
     # 특수 문자나 구분자를 공백으로 변환
-    text = re.sub(r'[<《〔【>》〕】]', ' ', text)
+    text = re.sub(r'[〈<《〔【]', '〈', text)
+    text = re.sub(r'[>》〕】〉]', '〉', text)
     # '티켓오픈' 관련 문구 제거
     text = re.sub(r'\d*차?\s*티켓\s*오?픈(?:\s*안내)?', ' ', text, flags=re.IGNORECASE)
     # 여러 공백을 하나로
