@@ -13,5 +13,6 @@ def normalize_title_key(text: str) -> str:
     # 공연 제목에서 "뮤지컬", "연극", "콘서트" 등의 키워드를 제거합니다.
     text = re.sub(r'[〈《<〔【]', '<', text)
     text = re.sub(r'[〉》>〕】]', '>', text)
-    text = re.sub(r'\s+', '', text)
+    text = re.sub(r'\d+차 티켓 오픈 안내', '', text)
+    text = re.sub(r'티켓 오픈 안내', '', text)
     return text.strip()
