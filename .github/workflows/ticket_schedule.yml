@@ -41,6 +41,7 @@ jobs:
           NOTION_PAGE_ID: ${{ secrets.NOTION_PAGE_ID }}
           NOTION_DB_ID: ${{ secrets.NOTION_DB_ID }}
           NOTION_ACT_DB_ID: ${{ secrets.NOTION_ACT_DB_ID }}
+          NOTION_TITLE_DB_ID: ${{ secrets.NOTION_TITLE_DB_ID }}
           GB_ICAL_URL : ${{ secrets.GB_ICAL_URL }}
           CHROME_BIN: /usr/bin/google-chrome
           TZ: Asia/Seoul

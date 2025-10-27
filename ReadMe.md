@@ -13,6 +13,7 @@
 - `NOTION_PAGE_ID` – Notion Page ID
 - `NOTION_DB_ID` - Notion database ID
 - `NOTION_ACT_DB_ID` -  Notion follow 배우 database ID
+- `NOTION_TITLE_DB_ID` - Notion follow 작품 database ID
 - `GB_ICAL_DIR` - 공연 일정 iCal 파일 저장 디렉토리
 - `GB_ICAL_URL` - 공연 일정 iCal 파일 URL
 - `GB_BRANCH` - GitHub Branch 이름

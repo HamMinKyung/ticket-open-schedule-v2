@@ -27,7 +27,9 @@ class NotionRepository:
         self.client = client or Client(auth=settings.NOTION_TOKEN)  # log_level=logging.DEBUG
         self.database_id = database_id or settings.NOTION_DB_ID
         self.actor_db_id = settings.NOTION_ACT_DB_ID
+        self.title_db_id = settings.NOTION_TITLE_DB_ID
         self.actor_name_map = self._load_actor_name_map()
+        self.title_name_map = self._load_title_name_map()
         self.output_dir = settings.GB_ICAL_DIR
         self.ical_url = settings.GB_ICAL_URL
 
@@ -101,6 +103,15 @@ class NotionRepository:
                             self._extract_names_from_cast(ticket.title)
                         )
                         if name in self.actor_name_map
+                    ]
+                },
+                "관련 작품": {
+                    "relation": [
+                        {"id": self.title_name_map[name]}
+                        for name in set(
+                            self._extract_names_from_title(ticket.title)
+                        )
+                        if name in self.title_name_map
                     ]
                 },
                 "등록 링크": {"url": ticket.ical_url},
@@ -214,12 +225,30 @@ class NotionRepository:
             if p["properties"]["이름"]["title"]
         }
 
+    def _load_title_name_map(self) -> dict:
+        results = self._get_all_pages(self.title_db_id)
+        return {
+            p["properties"]["이름"]["title"][0]["plain_text"]: p["id"]
+            for p in results
+            if p["properties"]["이름"]["title"]
+        }
+
     def _extract_names_from_cast(self, cast_text: str) -> list[str]:
         matched_names = []
         for name in self.actor_name_map.keys():
             # 경계 처리: 이름 앞뒤가 (시작/끝/공백/쉼표/개행/구두점) 중 하나일 때만 매칭
             pattern = rf'(?<!\w){re.escape(name)}(?!\w)'
             if re.search(pattern, cast_text):
+                matched_names.append(name)
+
+        return matched_names
+
+    def _extract_names_from_title(self, title_text: str) -> list[str]:
+        matched_names = []
+        for name in self.title_name_map.keys():
+            # 경계 처리: 이름 앞뒤가 (시작/끝/공백/쉼표/개행/구두점) 중 하나일 때만 매칭
+            pattern = rf'(?<!\w){re.escape(name)}(?!\w)'
+            if re.search(pattern, title_text):
                 matched_names.append(name)
 
         return matched_names
@@ -255,24 +284,32 @@ class NotionRepository:
                 self._extract_names_from_cast(cast_text) +
                 self._extract_names_from_cast(title_str)
             )
+            title_names = set(self._extract_names_from_title(title_str))
             matched_actor_ids = [
                 {"id": self.actor_name_map[name]}
                 for name in names
                 if name in self.actor_name_map
             ]
+            matched_title_ids = [
+                {"id": self.title_name_map[name]}
+                for name in title_names
+                if name in self.title_name_map
+            ]
 
-            if not matched_actor_ids:
-                print(f"⚠️ 매칭 배우 없음: {title_str}")
+            if not matched_actor_ids and not matched_title_ids:
+                print(f"⚠️ 매칭 배우 및 작품 없음: {title_str}")
                 continue
+
+            properties = {}
+            if matched_actor_ids:
+                properties["출연 배우"] = {"relation": matched_actor_ids}
+            if matched_title_ids:
+                properties["관련 작품"] = {"relation": matched_title_ids}
 
             try:
                 self.client.pages.update(
                     page_id=page_id,
-                    properties={
-                        "출연 배우": {
-                            "relation": matched_actor_ids
-                        }
-                    }
+                    properties=properties
                 )
                 print(f"✅ 갱신 완료: {title_str}")
             except Exception as ex:
@@ -315,9 +352,10 @@ class NotionRepository:
         # 출연 배우 이름 추출 (중복 호출 방지)
         cast_names = self._extract_names_from_cast(ticket.cast)
         title_names = self._extract_names_from_cast(ticket.title)
-        all_names = list(set(cast_names + title_names))
+        related_work_names = self._extract_names_from_title(ticket.title)
+        all_names = list(set(cast_names + title_names + related_work_names))
 
-        event.description = ", ".join(ticket.providers ) +" "+ ", ".join(all_names)
+        event.description = ", ".join(ticket.providers) +" "+ ", ".join(all_names)
         event.categories = {"티켓오픈"}
 
         # 알림 추가 방식 수정
