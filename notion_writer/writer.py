@@ -228,9 +228,9 @@ class NotionRepository:
     def _load_title_name_map(self) -> dict:
         results = self._get_all_pages(self.title_db_id)
         return {
-            p["properties"]["이름"]["title"][0]["plain_text"]: p["id"]
+            p["properties"]["공연명"]["title"][0]["plain_text"]: p["id"]
             for p in results
-            if p["properties"]["이름"]["title"]
+            if p["properties"]["공연명"]["title"]
         }
 
     def _extract_names_from_cast(self, cast_text: str) -> list[str]:
