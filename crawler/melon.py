@@ -8,7 +8,7 @@ from typing import List, Dict, Any, Tuple
 from crawler.base import AsyncCrawlerBase
 from utils.config import settings
 from models.ticket import TicketInfo
-from utils.utils import normalize_date_string
+from utils.utils import normalize_date_string, normalize_title
 import random
 
 
@@ -102,7 +102,7 @@ class MelonCrawler(AsyncCrawlerBase):
             for label, od in self._parse_open_dates(soup):
                 if self.start <= od <= self.end:
                     tickets.append(TicketInfo(
-                        title=title.strip(),
+                        title=normalize_title(title.strip()),
                         open_datetime=od,
                         round_info=round_info,
                         cast=cast,
@@ -119,7 +119,7 @@ class MelonCrawler(AsyncCrawlerBase):
         # “티켓오픈” 한 건만
         else:
             tickets.append(TicketInfo(
-                title=title.strip(),
+                title=normalize_title(title.strip()),
                 open_datetime=item['open_date'],
                 round_info=round_info,
                 cast=cast,

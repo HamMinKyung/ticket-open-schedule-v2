@@ -9,10 +9,13 @@ def normalize_date_string(date_text: str) -> str:
 
     return text
 
-def normalize_title_key(text: str) -> str:
-    # 공연 제목에서 "뮤지컬", "연극", "콘서트" 등의 키워드를 제거합니다.
-    text = re.sub(r'[<《〔【]', '〈', text)
-    text = re.sub(r'[>》〕】]', '〉', text)
-    text = re.sub(r'\d+차 티켓 오픈 안내', '', text)
-    text = re.sub(r'티켓 오픈 안내', '', text)
+def normalize_title(text: str) -> str:
+    # 괄호와 그 안의 내용 제거 (e.g., (서울), [앵콜])
+    text = re.sub(r'\s*[\[(].*?[\])]\s*', ' ', text)
+    # 특수 문자나 구분자를 공백으로 변환
+    text = re.sub(r'[<《〔【>》〕】]', ' ', text)
+    # '티켓오픈' 관련 문구 제거
+    text = re.sub(r'\d*차?\s*티켓\s*오?픈(?:\s*안내)?', ' ', text, flags=re.IGNORECASE)
+    # 여러 공백을 하나로
+    text = ' '.join(text.split())
     return text.strip()

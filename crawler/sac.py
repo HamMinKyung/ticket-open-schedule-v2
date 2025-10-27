@@ -3,7 +3,7 @@ from bs4 import BeautifulSoup
 from datetime import datetime
 from typing import List, Dict
 
-from utils.utils import normalize_date_string
+from utils.utils import normalize_date_string, normalize_title
 from models.ticket import TicketInfo
 from crawler.base import AsyncCrawlerBase
 from utils.config import settings
@@ -107,7 +107,7 @@ class SacCrawler(AsyncCrawlerBase):
                 round_info = normalize_date_string(round_info)
                 # 티켓 정보 생성
                 tickets.append(TicketInfo(
-                    title=title,
+                    title=normalize_title(title),
                     open_datetime=schedule["datetime"],
                     round_info=round_info,
                     cast="\n".join(cast),

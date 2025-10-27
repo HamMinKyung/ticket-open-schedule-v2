@@ -4,7 +4,7 @@ from bs4 import BeautifulSoup
 
 from crawler.base import AsyncCrawlerBase
 from models.ticket import TicketInfo
-from utils import normalize_date_string
+from utils import normalize_date_string, normalize_title
 from utils.config import settings
 from html import unescape
 from datetime import datetime
@@ -181,7 +181,7 @@ class SejongPac(AsyncCrawlerBase):
 
             for line in info_lines:
                 if "공연명" in line:
-                    title = line.split("공연명")[-1].strip(": ： ·").strip()
+                    title = normalize_title(line.split("공연명")[-1].strip(": ： ·").strip())
                     if "연극" in title:
                         category = "연극"
                     elif "뮤지컬" in title:

@@ -7,6 +7,7 @@ import re
 from crawler.base import AsyncCrawlerBase
 from models.ticket import TicketInfo
 from utils.config import settings
+from utils.utils import normalize_title
 
 
 class TicketLinkCrawler(AsyncCrawlerBase):
@@ -122,7 +123,7 @@ class TicketLinkCrawler(AsyncCrawlerBase):
         open_dt = datetime.fromtimestamp(int(ts) / 1000)
 
         ticket = TicketInfo(
-            title=title_text,
+            title=normalize_title(title_text),
             open_datetime=open_dt,
             round_info=open_round,
             cast=cast_str,

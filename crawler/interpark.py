@@ -5,7 +5,7 @@ from bs4 import BeautifulSoup
 from crawler.base import AsyncCrawlerBase
 from utils.config import settings
 from models.ticket import TicketInfo
-from utils.utils import normalize_date_string
+from utils.utils import normalize_date_string, normalize_title
 import logging
 import re
 
@@ -134,7 +134,7 @@ class InterParkCrawler(AsyncCrawlerBase):
         tickets: List[TicketInfo] = []
         for open_type, open_dt in schedules:
             tickets.append(TicketInfo(
-                title=item.get("title", "-").strip(),  # 공연 제목
+                title=normalize_title(item.get("title", "-").strip()),  # 공연 제목
                 open_datetime=open_dt,  # 오픈 일시
                 round_info=round_info,  # 오픈 회차
                 cast=cast,  # 출연진
