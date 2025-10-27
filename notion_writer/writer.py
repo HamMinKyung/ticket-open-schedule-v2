@@ -246,9 +246,7 @@ class NotionRepository:
     def _extract_names_from_title(self, title_text: str) -> list[str]:
         matched_names = []
         for name in self.title_name_map.keys():
-            # 경계 처리: 이름 앞뒤가 (시작/끝/공백/쉼표/개행/구두점) 중 하나일 때만 매칭
-            pattern = rf'(?<!\w){re.escape(name)}(?!\w)'
-            if re.search(pattern, title_text):
+            if name in title_text:
                 matched_names.append(name)
 
         return matched_names
