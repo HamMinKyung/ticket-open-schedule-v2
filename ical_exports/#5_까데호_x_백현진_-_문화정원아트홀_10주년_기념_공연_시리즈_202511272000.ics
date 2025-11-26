@@ -8,11 +8,11 @@ ACTION:DISPLAY
 DESCRIPTION:Reminder
 END:VALARM
 CATEGORIES:티켓오픈
-DESCRIPTION:티켓링크 
+DESCRIPTION:멜론티켓 
 DTEND:20251127T113000Z
-LOCATION:이화여대 삼성홀
+LOCATION:문화정원아트홀
 DTSTART:20251127T110000Z
-SUMMARY:티켓오픈 〈 ARTMS World Tour 〉 Grand Club Icarus in Seoul
-UID:b52a349d-fe0c-4111-9ed0-cda2be75aeba@b52a.org
+SUMMARY:티켓오픈 #5 까데호 x 백현진 - 문화정원아트홀 10주년 기념 공연 시리즈
+UID:cddd9410-c302-47cd-8b29-fec67421dc3a@cddd.org
 END:VEVENT
 END:VCALENDAR
