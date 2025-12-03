@@ -10,9 +10,9 @@ END:VALARM
 CATEGORIES:티켓오픈
 DESCRIPTION:놀티켓 
 DTEND:20251204T053000Z
-LOCATION:예술의전당 콘서트홀
+LOCATION:매키탄 호텔 (The McKithan Hotel)
 DTSTART:20251204T050000Z
-SUMMARY:티켓오픈 드미트리 시쉬킨 피아노 리사이틀
-UID:cfd3c3dc-4201-460f-bae9-95e736b5c53b@cfd3.org
+SUMMARY:티켓오픈 〈슬립노모어 서울〉
+UID:8dcc0ce7-ebe6-4385-9c0c-3ee42b78ea84@8dcc.org
 END:VEVENT
 END:VCALENDAR
