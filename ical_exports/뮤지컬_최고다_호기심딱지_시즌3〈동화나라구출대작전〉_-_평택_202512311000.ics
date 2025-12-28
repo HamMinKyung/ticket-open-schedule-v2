@@ -8,11 +8,11 @@ ACTION:DISPLAY
 DESCRIPTION:Reminder
 END:VALARM
 CATEGORIES:티켓오픈
-DESCRIPTION:티켓링크 
+DESCRIPTION:놀티켓 
 DTEND:20251231T013000Z
-LOCATION:평택 서부문화예술회관 대공연장
+LOCATION:평택서부문화예술회관-대공연장
 DTSTART:20251231T010000Z
-SUMMARY:티켓오픈 뮤지컬 최고다 호기심딱지 시즌3 〈동화나라 구출 대작전〉 - 평택
-UID:0ab658d8-b04f-419e-bbce-be3c67a561b1@0ab6.org
+SUMMARY:티켓오픈 뮤지컬 최고다 호기심딱지 시즌3〈동화나라구출대작전〉 - 평택
+UID:47bdb54b-908d-40f2-bc6f-bc0057d7d020@47bd.org
 END:VEVENT
 END:VCALENDAR
