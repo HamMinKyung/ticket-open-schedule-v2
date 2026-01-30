@@ -24,7 +24,7 @@ def calc_date_range() -> Tuple[datetime, datetime]:
     start = today.replace(hour=0, minute=0, second=0, microsecond=0)
 
     # 7일 뒤 23:59
-    end = (start + timedelta(days=7)).replace(hour=23, minute=59, second=0, microsecond=0)
+    end = (start + timedelta(days=14)).replace(hour=23, minute=59, second=0, microsecond=0)
 
     return start, end
 
@@ -32,7 +32,11 @@ def calc_date_range() -> Tuple[datetime, datetime]:
 async def main():
     dr = calc_date_range()
     print(f"크롤링 기간: {dr[0]} ~ {dr[1]} start.")
-    crawlers = [InterParkCrawler(dr), MelonCrawler(dr), SejongPac(dr), SacCrawler(dr), TicketLinkCrawler(dr)]
+    crawlers = [
+        # InterParkCrawler(dr), 
+        MelonCrawler(dr)
+        # , SejongPac(dr), SacCrawler(dr), TicketLinkCrawler(dr)
+    ]
 
     tasks = [crawler.crawl() for crawler in crawlers]
     results = await asyncio.gather(*tasks)
