@@ -95,6 +95,8 @@ class MelonCrawler(AsyncCrawlerBase):
         REGIONS_KEYWORDS = ("서울", "인천", "경기", "부산", "울산")
         regions = next((kw for kw in REGIONS_KEYWORDS if kw in venue), "서울")
 
+        print(f"지역 정보 org {venue}. conversion {regions}")
+        
         tickets: List[TicketInfo] = []
 
         # “오픈일정 보기”인 경우, 상세 여러 일정 파싱
