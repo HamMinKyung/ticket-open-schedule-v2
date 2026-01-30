@@ -129,7 +129,7 @@ class InterParkCrawler(AsyncCrawlerBase):
         # 지역 설정
         CONVERT_REGIONS = {"SEOUL": "서울", "GYEONGGI": "경기", "BUSAN": "부산", "ULSAN": "울산"}
         regions = CONVERT_REGIONS[item.get("region", "SEOUL")]
-        print(f"지역 정보 org {item.get("resion")}. conversion {regions}")
+        print(f"지역 정보 org {item.get("region", "SEOUL")}. conversion {regions}")
         # 모든 유효 일정에 대해 TicketInfo 생성
         tickets: List[TicketInfo] = []
         for open_type, open_dt in schedules:
