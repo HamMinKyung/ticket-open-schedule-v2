@@ -85,6 +85,9 @@ class TicketLinkCrawler(AsyncCrawlerBase):
 
         venue = notice.get("placeName") or item.get("placeName") or "-"
         region = self._extract_region(venue, title_text)
+
+        print(f"지역 정보 org {venue}. conversion {region}")
+        
         if not region:
             print(f"[Skip] Region not allowed/matched: title='{title_text}', venue='{venue}'")
             return []
