@@ -8,11 +8,11 @@ ACTION:DISPLAY
 DESCRIPTION:Reminder
 END:VALARM
 CATEGORIES:티켓오픈
-DESCRIPTION:놀티켓 
+DESCRIPTION:티켓링크\, 놀티켓 
 DTEND:20260219T013000Z
-LOCATION:울산북구문화예술회관 2층 공연장
+LOCATION:성남아트리움 대극장
 DTSTART:20260219T010000Z
-SUMMARY:티켓오픈 2026 가족퍼포먼스쇼 〈아쿠아쇼-바닷속버블왕국〉 - 울산
-UID:36c5f423-c856-4838-8579-73f590013281@36c5.org
+SUMMARY:티켓오픈 뮤지컬 최고다 호기심딱지 시즌4 〈우리 몸은 우리가 지킨다!〉 - 성남
+UID:fbc48abb-3339-4ca6-b85f-088eeecd08f0@fbc4.org
 END:VEVENT
 END:VCALENDAR
