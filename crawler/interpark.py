@@ -72,7 +72,9 @@ class InterParkCrawler(AsyncCrawlerBase):
         cfg = settings.CRAWLERS['inter_park']
         notice = item["noticeId"]
         url = f"{cfg['base_url']}{cfg['detail_endpoint']}{notice}"
-        html = await (await session.get(url)).text()
+        async with session.get(url) as resp:
+            resp.raise_for_status()
+            html = await resp.text()
         soup = BeautifulSoup(html, "html.parser")
 
         # 상세 URL 결정

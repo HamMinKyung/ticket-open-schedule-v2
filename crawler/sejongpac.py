@@ -1,3 +1,5 @@
+import asyncio
+import random
 from typing import Dict, Any, List
 
 from bs4 import BeautifulSoup
@@ -55,6 +57,7 @@ class SejongPac(AsyncCrawlerBase):
     async def _fetch_list(self, session) -> List[Dict]:
         items = []
         for page in self.cfg['pages']:
+            await asyncio.sleep(random.uniform(1.0, 2.0))
             payload = self.cfg["params"]
             payload['pageIndex'] = str(page)
 

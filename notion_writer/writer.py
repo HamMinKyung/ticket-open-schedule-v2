@@ -91,7 +91,7 @@ class NotionRepository:
                 # "상세 링크": {"url": ticket.detail_url},
 
                 "출연진": {
-                    "rich_text": [{"type": "text", "text": {"content": ticket.cast}}]
+                    "rich_text": [{"type": "text", "text": {"content": ticket.cast[:2000]}}]
                 },
                 "예매처": {
                     "multi_select": [{"name": name} for name in ticket.providers]
@@ -132,8 +132,21 @@ class NotionRepository:
         긴 텍스트(value)는 2000자씩 잘라 여러 paragraph 블록으로 분할 삽입합니다.
         """
 
-        def chunk_text(text: str, size: int = 2000) -> list[str]:
-            return [text[i: i + size] for i in range(0, len(text), size)]
+        def utf16_len(s: str) -> int:
+            return sum(2 if ord(c) > 0xFFFF else 1 for c in s)
+
+        def chunk_text(text: str, limit: int = 2000) -> list[str]:
+            chunks, current, current_len = [], [], 0
+            for ch in text:
+                ch_len = 2 if ord(ch) > 0xFFFF else 1
+                if current_len + ch_len > limit:
+                    chunks.append("".join(current))
+                    current, current_len = [], 0
+                current.append(ch)
+                current_len += ch_len
+            if current:
+                chunks.append("".join(current))
+            return chunks or [""]
 
         children: list[dict] = []
         for key, value in content.items():

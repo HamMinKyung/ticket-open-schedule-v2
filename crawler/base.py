@@ -28,6 +28,12 @@ class AsyncCrawlerBase(ABC):
         pass
 
     async def crawl(self) -> List[TicketInfo]:
+        semaphore = asyncio.Semaphore(5)
+
+        async def limited_fetch_detail(item):
+            async with semaphore:
+                return await self._safe_fetch_detail(session, item)
+
         async with aiohttp.ClientSession(
             headers=self.headers,
             timeout=self.timeout
@@ -39,7 +45,7 @@ class AsyncCrawlerBase(ABC):
                 return []
 
             detail_results = await asyncio.gather(
-                *(self._safe_fetch_detail(session, item) for item in items),
+                *(limited_fetch_detail(item) for item in items),
                 return_exceptions=False  # 각 fetch_detail에서 내부 처리
             )
 

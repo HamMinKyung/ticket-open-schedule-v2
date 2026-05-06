@@ -3,6 +3,7 @@ import logging
 
 logger = logging.getLogger(__name__)
 
+import asyncio
 import aiohttp
 from bs4 import BeautifulSoup, NavigableString, Tag
 from datetime import datetime
@@ -38,10 +39,21 @@ class MelonCrawler(AsyncCrawlerBase):
                     "orderType": "2",
                     "pageIndex": str(page)
                 }
+                await asyncio.sleep(random.uniform(1.0, 3.0))
                 headers = self._get_headers()
-                async with session.post(self.list_url, headers=headers, data=payload) as resp:
-                    resp.raise_for_status()
-                    html = await resp.text()
+                for attempt in range(3):
+                    async with session.post(self.list_url, headers=headers, data=payload) as resp:
+                        if resp.status == 423:
+                            wait = 10 * (attempt + 1)
+                            logger.warning(f"[MelonCrawler] 423 Locked - {wait}초 후 재시도 ({attempt + 1}/3)")
+                            await asyncio.sleep(wait)
+                            continue
+                        resp.raise_for_status()
+                        html = await resp.text()
+                        break
+                else:
+                    logger.error(f"[MelonCrawler] 423 Locked 재시도 초과: genre={genre_name}, page={page}")
+                    continue
                 soup = BeautifulSoup(html, 'html.parser')
 
                 for li in soup.select("ul.list_ticket_cont li"):
