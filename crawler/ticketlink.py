@@ -104,6 +104,7 @@ class TicketLinkCrawler(AsyncCrawlerBase):
 
         reserveWebUrl = notice.get("reserveWebUrl") or item.get("reserveWebUrl") or ""
         open_type = "일반예매" if reserveWebUrl and reserveWebUrl != "." else ("티켓오픈" if reserveWebUrl == "." else "-")
+        print(f"오픈 타입 reserveWebUrl {reserveWebUrl}. open_type {open_type}")
 
         cast_str = self.extract_cast_from_body(body_soup)
 

@@ -1,12 +1,14 @@
 # notion_db_writer.py
 import asyncio
 import logging
+import time
 from typing import Optional, List
 
 logger = logging.getLogger(__name__)
 
 from ics.grammar.parse import ContentLine
 from notion_client import Client
+from notion_client.errors import RequestTimeoutError
 from utils.config import settings
 from models.ticket import TicketInfo
 from ics import Calendar, Event
@@ -14,6 +16,19 @@ import re
 import os
 from datetime import timedelta
 import glob
+
+
+def _notion_call(fn, *args, retries: int = 3, **kwargs):
+    """RequestTimeoutError 발생 시 지수 백오프로 재시도"""
+    for attempt in range(retries):
+        try:
+            return fn(*args, **kwargs)
+        except RequestTimeoutError:
+            if attempt == retries - 1:
+                raise
+            wait = 2 ** attempt
+            logger.warning(f"Notion API 타임아웃 - {wait}초 후 재시도 ({attempt + 1}/{retries})")
+            time.sleep(wait)
 
 
 class NotionRepository:
@@ -182,39 +197,32 @@ class NotionRepository:
             if existing:
                 page_id = existing["id"]
                 # 1) 속성 업데이트
-                self.client.pages.update(page_id=page_id, properties=props)
+                _notion_call(self.client.pages.update, page_id=page_id, properties=props)
 
                 # 2) 기존 블록 전부 삭제
                 cursor = None
                 while True:
                     if cursor:
-                        resp = self.client.blocks.children.list(
-                            block_id=page_id,
-                            start_cursor=cursor,
-                            page_size=100
-                        )
+                        resp = _notion_call(self.client.blocks.children.list,
+                            block_id=page_id, start_cursor=cursor, page_size=100)
                     else:
-                        resp = self.client.blocks.children.list(
-                            block_id=page_id,
-                            page_size=100
-                        )
+                        resp = _notion_call(self.client.blocks.children.list,
+                            block_id=page_id, page_size=100)
 
                     for block in resp.get("results", []):
-                        self.client.blocks.delete(block_id=block["id"])
+                        _notion_call(self.client.blocks.delete, block_id=block["id"])
                     if not resp.get("has_more"):
                         break
                     cursor = resp.get("next_cursor")
 
                 # 3) 새 블록 추가
-                self.client.blocks.children.append(
-                    block_id=page_id,
-                    children=contents
-                )
+                _notion_call(self.client.blocks.children.append,
+                    block_id=page_id, children=contents)
                 logger.info(f"🔁 업데이트 및 블록 교체 완료: {ticket.title} (page_id={page_id})")
 
             else:
                 # 생성 시 children 옵션으로 한 번에 삽입
-                created = self.client.pages.create(
+                created = _notion_call(self.client.pages.create,
                     parent={"type": "data_source_id", "data_source_id": self._resolve_data_source_id(self.database_id)},
                     properties=props,
                     children=contents
