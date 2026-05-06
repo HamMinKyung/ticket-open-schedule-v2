@@ -103,7 +103,7 @@ class TicketLinkCrawler(AsyncCrawlerBase):
         open_round = period
 
         reserveWebUrl = notice.get("reserveWebUrl") or item.get("reserveWebUrl") or ""
-        open_type = "일반예매" if reserveWebUrl and reserveWebUrl != "." else ("티켓오픈" if reserveWebUrl == "." else "-")
+        open_type = "일반예매" if reserveWebUrl  else "티켓오픈"
         print(f"오픈 타입 reserveWebUrl {reserveWebUrl}. open_type {open_type}")
 
         cast_str = self.extract_cast_from_body(body_soup)
@@ -244,12 +244,17 @@ class TicketLinkCrawler(AsyncCrawlerBase):
                     found = True
                 continue
             if found:
-                # 전각(［) / 반각([) 모두 섹션 구분자로 처리
-                if not txt or txt[0] in ("[", "［") or txt.startswith("※") or txt.startswith("기획사정보"):
+                if not txt:
                     break
-                # ［CAST］, [CREATIVE] 같은 순수 섹션 헤더 라인은 스킵
+                # 전각(［) / 반각([) 으로 감싼 순수 헤더 라인 처리
                 if re.match(r'^[\[［].+[\]］]$', txt):
-                    continue
+                    # [CAST], ［CAST］ 같은 캐스트 관련 헤더는 스킵
+                    if "CAST" in txt.upper() or "캐스팅" in txt:
+                        continue
+                    # [CREATIVE TEAM] 등 다른 섹션 헤더는 종료
+                    break
+                if txt[0] in ("[", "［") or txt.startswith("※") or txt.startswith("기획사정보"):
+                    break
                 lines.append(txt)
 
         return ", ".join(lines)
