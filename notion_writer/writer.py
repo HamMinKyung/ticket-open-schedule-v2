@@ -3,6 +3,8 @@ import asyncio
 import logging
 from typing import Optional, List
 
+logger = logging.getLogger(__name__)
+
 from ics.grammar.parse import ContentLine
 from notion_client import Client
 from utils.config import settings
@@ -195,7 +197,7 @@ class NotionRepository:
                     block_id=page_id,
                     children=contents
                 )
-                print(f"🔁 업데이트 및 블록 교체 완료: {ticket.title} (page_id={page_id})")
+                logger.info(f"🔁 업데이트 및 블록 교체 완료: {ticket.title} (page_id={page_id})")
 
             else:
                 # 생성 시 children 옵션으로 한 번에 삽입
@@ -205,10 +207,10 @@ class NotionRepository:
                     children=contents
                 )
                 page_id = created["id"]
-                print(f"🆕 생성 및 블록 삽입 완료: {ticket.title} (page_id={page_id})")
+                logger.info(f"🆕 생성 및 블록 삽입 완료: {ticket.title} (page_id={page_id})")
 
         except Exception as ex:
-            print(f"❌ Notion 처리 실패: {ticket.title}, {ticket}", ex)
+            logger.error(f"❌ Notion 처리 실패: {ticket.title}", exc_info=ex)
 
     # def write_all(self, tickets: List[TicketInfo]) -> None:
     #     """
@@ -263,11 +265,11 @@ class NotionRepository:
                 logging.error(f"❌ 티켓 처리 실패: {ticket.title}", exc_info=result)
 
         ics_files = glob.glob(f"{self.output_dir}/*.ics")
-        print(f"📁 {self.output_dir} 내 .ics 파일 수: {len(ics_files)}개")
+        logger.info(f"📁 {self.output_dir} 내 .ics 파일 수: {len(ics_files)}개")
 
     def sync_existing_ticket_relations(self):
         pages = self._get_all_pages(self.database_id)
-        print(" 🔄 기존 티켓 DB에서 출연진 필드 기반으로 출연 배우 Relation 갱신 시작", len(pages))
+        logger.info(f"🔄 기존 티켓 DB에서 출연진 필드 기반으로 출연 배우 Relation 갱신 시작: {len(pages)}건")
         for page in pages:
             page_id = page["id"]
             title = page["properties"].get("공연 제목", {}).get("title", [])
@@ -276,7 +278,7 @@ class NotionRepository:
             cast_text = cast_field[0]["plain_text"] if cast_field else ""
 
             if not cast_text.strip():
-                print(f"⚠️ 출연진 없음: {title_str}")
+                logger.debug(f"⚠️ 출연진 없음: {title_str}")
                 continue
             names = set(
                 self._extract_names_from_cast(cast_text) +
@@ -295,7 +297,7 @@ class NotionRepository:
             ]
 
             if not matched_actor_ids and not matched_title_ids:
-                print(f"⚠️ 매칭 배우 및 작품 없음: {title_str}")
+                logger.debug(f"⚠️ 매칭 배우 및 작품 없음: {title_str}")
                 continue
 
             properties = {}
@@ -309,9 +311,9 @@ class NotionRepository:
                     page_id=page_id,
                     properties=properties
                 )
-                print(f"✅ 갱신 완료: {title_str}")
+                logger.info(f"✅ 갱신 완료: {title_str}")
             except Exception as ex:
-                print(f"❌ 갱신 실패: {title_str}", ex)
+                logger.error(f"❌ 갱신 실패: {title_str}", exc_info=ex)
 
     def _get_all_pages(self, database_id: str) -> list:
         results = []

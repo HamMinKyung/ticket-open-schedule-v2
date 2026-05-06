@@ -1,6 +1,8 @@
 # crawler/melon.py
 import logging
 
+logger = logging.getLogger(__name__)
+
 import aiohttp
 from bs4 import BeautifulSoup, NavigableString, Tag
 from datetime import datetime
@@ -58,7 +60,8 @@ class MelonCrawler(AsyncCrawlerBase):
                             if not (self.start <= dt <= self.end):
                                 continue
                             open_date = dt
-                        except:
+                        except (ValueError, AttributeError) as e:
+                            logger.debug(f"날짜 파싱 실패: {raw_date!r} - {e}")
                             continue
 
                     items.append({
@@ -95,7 +98,7 @@ class MelonCrawler(AsyncCrawlerBase):
         REGIONS_KEYWORDS = ("서울", "인천", "경기", "부산", "울산")
         regions = next((kw for kw in REGIONS_KEYWORDS if kw in venue), "서울")
 
-        print(f"지역 정보 org {venue}. conversion {regions}")
+        logger.debug(f"지역 정보 org {venue}. conversion {regions}")
         
         tickets: List[TicketInfo] = []
 
@@ -192,7 +195,8 @@ class MelonCrawler(AsyncCrawlerBase):
                 norm = normalize_date_string(raw)
                 od = datetime.strptime(norm, "%Y년 %m월 %d일  %H:%M")
                 results.append((label, od))
-            except:
+            except (ValueError, AttributeError) as e:
+                logger.debug(f"오픈일정 날짜 파싱 실패: {e}")
                 continue
         return results
 

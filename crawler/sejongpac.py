@@ -63,7 +63,7 @@ class SejongPac(AsyncCrawlerBase):
                 soup = BeautifulSoup(html, 'html.parser')
                 rows = soup.select("div.tbl_list > table > tbody > tr")
                 for row in rows:
-                    cols = row.findcols = row.find_all("td")
+                    cols = row.find_all("td")
                     if len(cols) < 6:
                         continue
 

@@ -3,8 +3,7 @@ disable_existing_loggers: False
 
 formatters:
   standard:
-    format: "%(
-    sctime)s [%(levelname)s] %(name)s: %(message)s"
+    format: "%(asctime)s [%(levelname)s] %(name)s: %(message)s"
 
 handlers:
   console:
@@ -15,15 +14,15 @@ handlers:
 
 loggers:
   crawler:
-    level: debug
+    level: DEBUG
     handlers: [console]
     propagate: no
 
   notion_writer:
-    level: debug
+    level: DEBUG
     handlers: [console]
     propagate: no
 
 root:
-  level: debug
+  level: DEBUG
   handlers: [console]

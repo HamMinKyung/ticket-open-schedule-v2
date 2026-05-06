@@ -42,7 +42,7 @@ class SacCrawler(AsyncCrawlerBase):
 
                 results.extend(items)
 
-                total_page = paging.get("'totalPage'", 1)
+                total_page = paging.get("totalPage", 1)
                 if page >= total_page:
                     break
 
@@ -53,7 +53,7 @@ class SacCrawler(AsyncCrawlerBase):
         # SN, PLACE_NAME, PRICE_INFO
         url = f"{self.base_url}{self.cfg['detail_endpoint']}{item['SN']}"
         # SN 값을 URL에 추가
-        async with (session.get(url) as resp):
+        async with session.get(url) as resp:
             html = await resp.text()
             soup = BeautifulSoup(html, "html.parser")
 
@@ -125,7 +125,7 @@ class SacCrawler(AsyncCrawlerBase):
             return tickets
 
 
-    def _extract_datetime_string(self, raw: str) -> str:
+    def _extract_datetime_string(self, raw: str) -> datetime | None:
         raw = re.sub(r'\(.*?\)', '', raw)  # 괄호 제거
         raw = raw.replace('오전', 'AM').replace('오후', 'PM')
         raw = re.sub(r'\s+', ' ', raw.strip())
@@ -138,9 +138,8 @@ class SacCrawler(AsyncCrawlerBase):
                 hour += 12
             elif ampm == "AM" and hour == 12:
                 hour = 0
-            dt = datetime(settings.current_year, int(month), int(day), hour, 0)
-            return dt.strftime("%Y-%m-%d %H:%M")
-        return ""
+            return datetime(settings.current_year, int(month), int(day), hour, 0)
+        return None
 
 
     def _parse_schedule(self, html) -> List[Dict[str, str]]:
@@ -155,10 +154,12 @@ class SacCrawler(AsyncCrawlerBase):
 
         for label, match in patterns:
             if match:
-                datetime_str = self._extract_datetime_string(match.group(2))
+                dt = self._extract_datetime_string(match.group(2))
+                if dt is None:
+                    continue
                 schedule.append({
                     "type": label,
                     "solo_sale": label == "선예매",
-                    "datetime": datetime_str
+                    "datetime": dt
                 })
         return schedule

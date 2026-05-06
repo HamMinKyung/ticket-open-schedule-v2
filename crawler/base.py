@@ -1,11 +1,14 @@
 import aiohttp
 import asyncio
+import logging
 from datetime import datetime
 from typing import List, Dict, Tuple
 from abc import ABC, abstractmethod
 
 from models.ticket import TicketInfo
 from utils.config import settings
+
+logger = logging.getLogger(__name__)
 
 
 class AsyncCrawlerBase(ABC):
@@ -32,7 +35,7 @@ class AsyncCrawlerBase(ABC):
             try:
                 items = await self._safe_fetch_list(session)
             except Exception as e:
-                print(f"[ERROR][{self.__class__.__name__}] List fetch critical error: {type(e).__name__} - {e}")
+                logger.error(f"[{self.__class__.__name__}] List fetch critical error: {type(e).__name__} - {e}")
                 return []
 
             detail_results = await asyncio.gather(
@@ -53,12 +56,12 @@ class AsyncCrawlerBase(ABC):
         try:
             return await self._fetch_list(session)
         except Exception as e:
-            print(f"[ERROR][{self.__class__.__name__}] _fetch_list 실패: {type(e).__name__} - {e}")
+            logger.error(f"[{self.__class__.__name__}] _fetch_list 실패: {type(e).__name__} - {e}")
             return []
 
     async def _safe_fetch_detail(self, session: aiohttp.ClientSession, item: Dict) -> List[TicketInfo] | None:
         try:
             return await self._fetch_detail(session, item)
         except Exception as e:
-            print(f"[ERROR][{self.__class__.__name__}] _fetch_detail 실패: {type(e).__name__} - {e}")
+            logger.error(f"[{self.__class__.__name__}] _fetch_detail 실패: {type(e).__name__} - {e}")
             return None

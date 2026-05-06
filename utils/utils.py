@@ -17,6 +17,8 @@ def normalize_title(text: str) -> str:
     text = re.sub(r'[>》〕】〉]', '〉', text)
     # '티켓오픈' 관련 문구 제거
     text = re.sub(r'\d*차?\s*티켓\s*오?픈(?:\s*안내)?', ' ', text, flags=re.IGNORECASE)
+    # 〉 뒤 trailing 텍스트 제거 (예: "마지막", "앵콜" 등)
+    text = re.sub(r'(〉)[^〉]*$', r'\1', text)
     # 여러 공백을 하나로
     text = ' '.join(text.split())
     return text.strip()
