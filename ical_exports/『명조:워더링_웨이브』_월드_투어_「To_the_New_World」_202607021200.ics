@@ -8,11 +8,11 @@ ACTION:DISPLAY
 DESCRIPTION:Reminder
 END:VALARM
 CATEGORIES:티켓오픈
-DESCRIPTION:놀티켓 
+DESCRIPTION:멜론티켓 
 DTEND:20260702T033000Z
-LOCATION:경기아트센터 소극장
+LOCATION:고려대학교 화정체육관
 DTSTART:20260702T030000Z
-SUMMARY:티켓오픈 2026 카즈미 타테이시 트리오 내한공연-지브리\, 재즈를 만나다-
-UID:fd8d17d8-2c1b-4f99-97c3-b7dfc95aa164@fd8d.org
+SUMMARY:티켓오픈 『명조:워더링 웨이브』 월드 투어 「To the New World」
+UID:e497a6c7-21a4-4dbe-ac88-4ac1efb62133@e497.org
 END:VEVENT
 END:VCALENDAR
