@@ -34,14 +34,14 @@ class Settings(BaseSettings):
             },
             'detail_endpoint': '/contents/notice/detail/',
             'selectors': {
-                'info_title': '.DetailInfo_infoWrap__1BtFi h2',
-                'schedule_box': '.DetailBooking_bookingBox__wcWDI',
-                'schedule_title': '.DetailBooking_scheduleTitle__REaUd',
-                'schedule_date': '.DetailBooking_scheduleDate__4WvwQ'
+                'info_title': '[class*="DetailInfo_infoWrap"] h2',
+                'schedule_box': '[class*="DetailBooking_bookingBox"]',
+                'schedule_title': '[class*="DetailBooking_scheduleTitle"]',
+                'schedule_date': '[class*="DetailBooking_scheduleDate"]'
             },
             'sibling': {
                 'name': 'div',
-                'class': 'DetailInfo_contents__grsx5',
+                'class': 'DetailInfo_contents',
             },
             'contents': {
                 'venue': "공연장소",

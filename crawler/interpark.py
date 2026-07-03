@@ -1,6 +1,7 @@
 from typing import List, Dict, Any, Optional
 from datetime import datetime
 import re
+import json
 
 from bs4 import BeautifulSoup
 from crawler.base import AsyncCrawlerBase
@@ -71,6 +72,91 @@ class InterParkCrawler(AsyncCrawlerBase):
         return None
 
     @staticmethod
+    def _compact(text: str) -> str:
+        return re.sub(r"\s+", "", text or "")
+
+    def _find_next_sibling(self, tag, name: str, class_prefix: str):
+        sibling = tag.find_next_sibling(name)
+        while sibling:
+            classes = sibling.get("class") or []
+            if not class_prefix:
+                return sibling
+            if any(class_prefix in cls for cls in classes):
+                return sibling
+            sibling = sibling.find_next_sibling(name)
+        return None
+
+    def _extract_detail_sections(self, soup: BeautifulSoup) -> Dict[str, str]:
+        content: Dict[str, str] = {}
+        selectors = self.cfg["selectors"]
+        for title_tag in soup.select(selectors["info_title"]):
+            key = title_tag.get_text(strip=True)
+            sibling = self._find_next_sibling(
+                title_tag,
+                self.cfg["sibling"]["name"],
+                self.cfg["sibling"]["class"],
+            )
+            content[key] = (
+                sibling.get_text(separator="\n", strip=True)
+                if sibling else ""
+            )
+
+        if content:
+            return content
+
+        # NOL 상세페이지처럼 기존 클래스가 바뀐 경우, 전체 텍스트에서 주요 섹션을 재추출한다.
+        page_text = soup.get_text("\n", strip=True)
+        if not page_text:
+            return content
+
+        labels = (
+            self.cfg["contents"]["performance_info"],
+            self.cfg["contents"]["cast"],
+        )
+        for label in labels:
+            block = self._extract_labeled_block(page_text, label, labels)
+            if block:
+                content[label] = block
+
+        return content
+
+    def _extract_labeled_block(self, text: str, label: str, boundary_labels: tuple[str, ...]) -> str:
+        lines = [line.strip() for line in text.splitlines()]
+        compact_label = self._compact(label)
+        boundary_set = {self._compact(item) for item in boundary_labels if item}
+
+        for idx, line in enumerate(lines):
+            normalized = re.sub(r"^[※•-* \t]+", "", line).strip()
+            compact_line = self._compact(normalized)
+            if compact_label not in compact_line:
+                continue
+
+            block: List[str] = []
+            inline = self._parse_perf(line, label)
+            if inline:
+                block.append(inline)
+
+            for next_line in lines[idx + 1:]:
+                normalized_next = re.sub(r"^[※•-* \t]+", "", next_line).strip()
+                if not normalized_next:
+                    if block:
+                        break
+                    continue
+                compact_next = self._compact(normalized_next)
+                if any(
+                    boundary != compact_label and boundary in compact_next
+                    for boundary in boundary_set
+                ):
+                    break
+                block.append(normalized_next)
+
+            result = "\n".join(block).strip()
+            if result:
+                return result
+
+        return ""
+
+    @staticmethod
     def _extract_open_period(perf_text: str) -> Optional[str]:
         if not perf_text:
             return None
@@ -118,32 +204,45 @@ class InterParkCrawler(AsyncCrawlerBase):
         )
 
         # 콘텐츠 수집
-        content = {}
-        for title_tag in soup.select(cfg["selectors"]["info_title"]):
-            key = title_tag.get_text(strip=True)
-            sibling = title_tag.find_next_sibling(
-                cfg["sibling"]["name"],
-                class_=cfg["sibling"]["class"]
+        page_text = soup.get_text("\n", strip=True)
+        content = self._extract_detail_sections(soup)
+        if page_text:
+            labels = (
+                cfg["contents"]["performance_info"],
+                cfg["contents"]["cast"],
             )
-            content[key] = (
-                sibling.get_text(separator="\n", strip=True)
-                if sibling else ""
-            )
+            for label in labels:
+                if content.get(label):
+                    continue
+                block = self._extract_labeled_block(page_text, label, labels)
+                if block:
+                    content[label] = block
 
         # 공연 정보 파싱
         perf_info = content.get(cfg["contents"]["performance_info"], "")
-        venue = self._parse_perf(perf_info, cfg["contents"]["venue"]) or item.get("venueName", "")
+        cast_info = content.get(cfg["contents"]["cast"], "")
+        venue = (
+            self._parse_perf(perf_info, cfg["contents"]["venue"])
+            or self._parse_perf(page_text, cfg["contents"]["venue"])
+            or item.get("venueName", "")
+        )
         round_info = (
                 self._extract_open_period(perf_info)
+                or self._extract_open_period(page_text)
                 or self._parse_perf(perf_info, cfg["contents"]["open_period"])
+                or self._parse_perf(page_text, cfg["contents"]["open_period"])
                 or self._parse_perf(perf_info, cfg["contents"]["open_period2"])
+                or self._parse_perf(page_text, cfg["contents"]["open_period2"])
                 or self._parse_perf(perf_info, cfg["contents"]["period"])
+                or self._parse_perf(page_text, cfg["contents"]["period"])
                 or self._parse_perf(perf_info, cfg["contents"]["period2"])
+                or self._parse_perf(page_text, cfg["contents"]["period2"])
                 or self._parse_perf(perf_info, cfg["contents"]["datetime"])
-                or extract_open_round(item.get("title", ""), perf_info)
+                or self._parse_perf(page_text, cfg["contents"]["datetime"])
+                or extract_open_round(item.get("title", ""), perf_info or page_text)
                 or "-"
         )
-        cast = clean_cast_text(content.get(cfg["contents"]["cast"], "-"))
+        cast = clean_cast_text(cast_info or "-")
         solo_sale = item.get("goodsSeatTypeStr") == "단독판매"
 
         # 일정 추출 및 필터링
@@ -167,6 +266,9 @@ class InterParkCrawler(AsyncCrawlerBase):
 
             if self.start <= dt <= self.end:
                 schedules.append((title, dt))
+
+        if not schedules:
+            schedules = self._extract_ticket_dates_from_html(html)
 
         # 유효 일정이 없으면 빈 리스트 반환
         if not schedules:
@@ -200,3 +302,60 @@ class InterParkCrawler(AsyncCrawlerBase):
             ))
 
         return tickets
+
+    @staticmethod
+    def _extract_ticket_dates_from_html(html: str) -> List[tuple[str, datetime]]:
+        patterns = [
+            r'"ticketDates"\s*:\s*(\[[\s\S]*?\])\s*,\s*"relatedNotices"',
+            r'"ticketDates"\s*:\s*(\[[\s\S]*?\])\s*,\s*"recommendedNotices"',
+            r'"ticketDates"\s*:\s*(\[[\s\S]*?\])',
+        ]
+        for pattern in patterns:
+            match = re.search(pattern, html)
+            if not match:
+                continue
+            try:
+                raw_items = json.loads(match.group(1))
+            except json.JSONDecodeError:
+                continue
+
+            entries: List[tuple[str, datetime]] = []
+            for item in raw_items:
+                open_name = (item.get("openName") or item.get("name") or "").strip()
+                open_date_str = (item.get("openDateStr") or "").strip()
+                if not open_date_str:
+                    continue
+                try:
+                    dt = datetime.strptime(open_date_str, "%Y-%m-%d %H:%M:%S")
+                except ValueError:
+                    continue
+                if open_name:
+                    entries.append((open_name, dt))
+            if entries:
+                return entries
+
+        # ticketDates 구조가 아니라도 openName/openDateStr 조합이 그대로 박혀 있는 경우를 처리한다.
+        fallback_patterns = [
+            r'"openName"\s*:\s*"(?P<name>[^"]+)"\s*,\s*"openDateStr"\s*:\s*"(?P<date>[^"]+)"',
+            r'"openDateStr"\s*:\s*"(?P<date>[^"]+)"\s*,\s*"openName"\s*:\s*"(?P<name>[^"]+)"',
+        ]
+        seen = set()
+        for pattern in fallback_patterns:
+            for match in re.finditer(pattern, html):
+                open_name = (match.group("name") or "").strip()
+                open_date_str = (match.group("date") or "").strip()
+                if not open_name or not open_date_str:
+                    continue
+                try:
+                    dt = datetime.strptime(open_date_str, "%Y-%m-%d %H:%M:%S")
+                except ValueError:
+                    continue
+                key = (open_name, dt)
+                if key in seen:
+                    continue
+                seen.add(key)
+                entries.append(key)
+
+        if entries:
+            return entries
+        return []
