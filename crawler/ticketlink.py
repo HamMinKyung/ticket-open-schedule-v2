@@ -47,13 +47,12 @@ class TicketLinkCrawler(AsyncCrawlerBase):
                     if not open_date_ts:
                         continue
 
-                    try:
-                        open_time = datetime.fromtimestamp(open_date_ts / 1000)
-                        if self.start <= open_time <= self.end:
-                            results.append(item)
-                    except (ValueError, TypeError) as e:
-                        logger.debug(f"[TicketLinkCrawler] timestamp 파싱 실패: noticeId={item.get('noticeId')} - {e}")
+                    open_time = self._parse_open_datetime(open_date_ts)
+                    if open_time is None:
+                        logger.debug(f"[TicketLinkCrawler] timestamp 파싱 실패: noticeId={item.get('noticeId')} - {open_date_ts!r}")
                         continue
+                    if self.start <= open_time <= self.end:
+                        results.append(item)
 
                 paging_info = result_data.get("paging", {})
                 current_page = paging_info.get("currentPage", 1)
@@ -127,7 +126,10 @@ class TicketLinkCrawler(AsyncCrawlerBase):
         if not ts:
             logger.debug(f"[TicketLinkCrawler] ticketOpenDatetime 없음: noticeId={notice_id}")
             return []
-        open_dt = datetime.fromtimestamp(int(ts) / 1000)
+        open_dt = self._parse_open_datetime(ts)
+        if open_dt is None:
+            logger.debug(f"[TicketLinkCrawler] ticketOpenDatetime 파싱 실패: noticeId={notice_id} - {ts!r}")
+            return []
 
         ticket = TicketInfo(
             title=normalize_title(title_text),
@@ -146,6 +148,25 @@ class TicketLinkCrawler(AsyncCrawlerBase):
             regions=region,
         )
         return [ticket]
+
+    @staticmethod
+    def _parse_open_datetime(raw) -> datetime | None:
+        """ticketOpenDatetime은 ISO 문자열("2026-07-03T21:00:00")과
+        epoch 밀리초(숫자) 두 형식이 모두 관측되어 둘 다 처리한다."""
+        if raw is None:
+            return None
+        if isinstance(raw, (int, float)):
+            return datetime.fromtimestamp(raw / 1000)
+        text = str(raw).strip()
+        if not text:
+            return None
+        try:
+            return datetime.fromisoformat(text)
+        except ValueError:
+            pass
+        if text.isdigit():
+            return datetime.fromtimestamp(int(text) / 1000)
+        return None
 
     @staticmethod
     def _normalize_text(s: str) -> str:
@@ -197,9 +218,9 @@ class TicketLinkCrawler(AsyncCrawlerBase):
     def _pick_performance_period(text: str) -> str | None:
         if not text: return None
         text = re.sub(r"[\u200b-\u200f\u202a-\u202e]", "", text)
-        m = re.search(r"^\s*[-–—•]?\s*공연기간\s*[:：]\s*(.+)$", text, re.MULTILINE)
+        m = re.search(r"^\s*[-–—•]?\s*공연\s*기간\s*[:：]\s*(.+)$", text, re.MULTILINE)
         if m: return m.group(1).strip()
-        m2 = re.search(r"^\s*[-–—•]?\s*공연기간\s*[-–—]\s*(.+)$", text, re.MULTILINE)
+        m2 = re.search(r"^\s*[-–—•]?\s*공연\s*기간\s*[-–—]\s*(.+)$", text, re.MULTILINE)
         if m2: return m2.group(1).strip()
         return None
 

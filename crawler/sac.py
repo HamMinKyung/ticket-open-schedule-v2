@@ -4,7 +4,7 @@ from datetime import datetime
 from typing import List, Dict
 import logging
 
-from utils.utils import extract_cast_from_lines, extract_open_round, normalize_date_string, normalize_title
+from utils.utils import extract_cast_from_lines, extract_open_round, normalize_date_string, normalize_performance_period, normalize_title
 from models.ticket import TicketInfo
 from crawler.base import AsyncCrawlerBase
 from utils.config import settings
@@ -104,6 +104,9 @@ class SacCrawler(AsyncCrawlerBase):
             # 할인정보
             contents["할인정보"] = tab_box[3].get_text(separator="\n", strip=True)
 
+            # 공연기간: 상세페이지 정보 목록의 "기간" 항목을 그대로 사용한다.
+            performance_period = normalize_performance_period(contents.get("기간")) or "-"
+
             tickets: List[TicketInfo] = []
             for schedule in schedules:
                 if not (self.start <= schedule["datetime"] <= self.end):
@@ -117,7 +120,7 @@ class SacCrawler(AsyncCrawlerBase):
                     title=normalize_title(title),
                     open_datetime=schedule["datetime"],
                     round_info=normalized_round_info,
-                    performance_period="-",
+                    performance_period=performance_period,
                     cast=cast,
                     detail_url=url,
                     category="공연",

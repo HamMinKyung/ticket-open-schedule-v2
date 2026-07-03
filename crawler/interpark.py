@@ -7,7 +7,7 @@ from bs4 import BeautifulSoup
 from crawler.base import AsyncCrawlerBase
 from utils.config import settings
 from models.ticket import TicketInfo
-from utils.utils import clean_cast_text, extract_open_round, extract_performance_period, normalize_date_string, normalize_title, resolve_region
+from utils.utils import clean_cast_text, extract_open_round, extract_open_round_period, extract_performance_period, normalize_date_string, normalize_title, resolve_region
 import logging
 
 logger = logging.getLogger(__name__)
@@ -126,7 +126,7 @@ class InterParkCrawler(AsyncCrawlerBase):
         boundary_set = {self._compact(item) for item in boundary_labels if item}
 
         for idx, line in enumerate(lines):
-            normalized = re.sub(r"^[※•-* \t]+", "", line).strip()
+            normalized = re.sub(r"^[※•\-* \t]+", "", line).strip()
             compact_line = self._compact(normalized)
             if compact_label not in compact_line:
                 continue
@@ -137,7 +137,7 @@ class InterParkCrawler(AsyncCrawlerBase):
                 block.append(inline)
 
             for next_line in lines[idx + 1:]:
-                normalized_next = re.sub(r"^[※•-* \t]+", "", next_line).strip()
+                normalized_next = re.sub(r"^[※•\-* \t]+", "", next_line).strip()
                 if not normalized_next:
                     if block:
                         break
@@ -155,44 +155,6 @@ class InterParkCrawler(AsyncCrawlerBase):
                 return result
 
         return ""
-
-    @staticmethod
-    def _extract_open_period(perf_text: str) -> Optional[str]:
-        if not perf_text:
-            return None
-
-        lines = [line.strip("※•-* \t\r") for line in perf_text.splitlines()]
-        for idx, line in enumerate(lines):
-            if not line:
-                continue
-            normalized = re.sub(r"\s+", " ", line)
-            if "티켓오픈" not in normalized and "티켓 오픈" not in normalized:
-                continue
-            if (
-                "공연기간" not in normalized
-                and "공연 기간" not in normalized
-                and "오픈기간" not in normalized
-                and "오픈 기간" not in normalized
-            ):
-                continue
-
-            # 3차 티켓오픈 공연기간: 2026년 8월 11일(화) ~ 8월 30일(일)
-            # #3차 티켓 오픈 기간 : 2026년 7월 28일(화) - 8월 17일(월)
-            match = re.search(
-                r"티켓\s*오픈\s*(?:공연\s*)?기간\s*[:：]?\s*(.+)$",
-                normalized,
-                flags=re.I,
-            )
-            if match:
-                return re.sub(r"\s*공연\s*$", "", match.group(1).strip())
-
-            # 2차 티켓오픈 공연 기간 / 8월 25일(화) ~ 9월 17일(목) 공연
-            if idx + 1 < len(lines):
-                next_line = re.sub(r"\s+", " ", lines[idx + 1]).strip()
-                if next_line:
-                    return re.sub(r"\s*공연\s*$", "", next_line)
-
-        return None
 
     async def _fetch_detail(self, session, item: Dict[str, Any]) -> List[TicketInfo]:
         cfg = settings.CRAWLERS['inter_park']
@@ -240,6 +202,7 @@ class InterParkCrawler(AsyncCrawlerBase):
         )
         performance_period = (
                 extract_performance_period(perf_info, page_text)
+                or extract_open_round_period(perf_info, page_text)
                 or "-"
         )
         cast = clean_cast_text(cast_info or "-")

@@ -6,6 +6,7 @@ from .utils import clean_cast_text
 from .utils import extract_cast_from_lines
 from .utils import resolve_region
 from .utils import extract_open_round
+from .utils import extract_open_round_period
 from .utils import extract_performance_period
 
 __all__ = [
@@ -16,5 +17,6 @@ __all__ = [
     "extract_cast_from_lines",
     "resolve_region",
     "extract_open_round",
+    "extract_open_round_period",
     "extract_performance_period",
 ]

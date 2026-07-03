@@ -9,7 +9,7 @@ from bs4 import BeautifulSoup
 from crawler.base import AsyncCrawlerBase
 from models.ticket import TicketInfo
 from utils.config import settings
-from utils.utils import extract_cast_from_lines, extract_open_round, extract_performance_period, normalize_title, resolve_region
+from utils.utils import extract_cast_from_lines, extract_open_round, extract_open_round_period, extract_performance_period, normalize_title, resolve_region
 
 logger = logging.getLogger(__name__)
 
@@ -211,6 +211,7 @@ class Yes24Crawler(AsyncCrawlerBase):
         return (
             self._pick_first_overview_value(overview, "공연기간")
             or extract_performance_period(overview)
+            or extract_open_round_period(overview)
             or "-"
         )
 

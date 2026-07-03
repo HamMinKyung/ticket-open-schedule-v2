@@ -57,4 +57,14 @@ def merge_ticket_sources(tickets: List[TicketInfo]) -> List[TicketInfo]:
             # 처음 보는 조합이면 복제하지 않고 그대로 저장
             merged[key] = tk
 
+    # 같은 공연이지만 오픈 회차(오픈 일시)가 달라 별도 항목으로 남은 경우,
+    # 회차 중 한 곳에서라도 출연진 정보를 찾았다면 나머지 빈 항목에도 채워준다.
+    best_cast_by_title: dict[str, str] = {}
+    for (merge_title, _), tk in merged.items():
+        if _text_score(tk.cast) > _text_score(best_cast_by_title.get(merge_title, "-")):
+            best_cast_by_title[merge_title] = tk.cast
+    for (merge_title, _), tk in merged.items():
+        if tk.cast == "-" and best_cast_by_title.get(merge_title, "-") != "-":
+            tk.cast = best_cast_by_title[merge_title]
+
     return list(merged.values())

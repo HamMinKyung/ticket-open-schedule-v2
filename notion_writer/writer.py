@@ -87,13 +87,13 @@ class NotionRepository:
                 "title": [{"type": "text", "text": {"content": ticket.title}}]
             },
             "구분": {
-                "rich_text": [{"type": "text", "text": {"content": ticket.category}}]
+                "rich_text": [{"type": "text", "text": {"content": ticket.category[:2000]}}]
             },
             "오픈 일시": {
                 "date": {"start": iso_date}
             },
             "오픈 회차": {
-                "rich_text": [{"type": "text", "text": {"content": ticket.round_info}}]
+                "rich_text": [{"type": "text", "text": {"content": ticket.round_info[:2000]}}]
             },
             "공연 기간": {
                 "rich_text": [{"type": "text", "text": {"content": ticket.performance_period[:2000]}}]
@@ -102,7 +102,7 @@ class NotionRepository:
                 "multi_select": [{"name": name} for name in sorted(ticket.open_type_all)]
             },
             "공연 장소": {
-                "rich_text": [{"type": "text", "text": {"content": ticket.venue}}]
+                "rich_text": [{"type": "text", "text": {"content": ticket.venue[:2000]}}]
             },
             "출연진": {
                 "rich_text": [{"type": "text", "text": {"content": ticket.cast[:2000]}}]
@@ -280,13 +280,17 @@ class NotionRepository:
         return matched_names
 
     async def write_all(self, tickets: List[TicketInfo]) -> None:
-        task = [
-            asyncio.to_thread(self.upsert_ticket, ticket)
-            for ticket in tickets
-        ]
+        # Notion API 레이트리밋 방지를 위해 동시 처리 개수를 제한한다.
+        semaphore = asyncio.Semaphore(3)
 
-        result = await asyncio.gather(*task, return_exceptions=True)
-        for ticket, result in zip(tickets, result):
+        async def limited_upsert(ticket: TicketInfo):
+            async with semaphore:
+                return await asyncio.to_thread(self.upsert_ticket, ticket)
+
+        task = [limited_upsert(ticket) for ticket in tickets]
+
+        results = await asyncio.gather(*task, return_exceptions=True)
+        for ticket, result in zip(tickets, results):
             if isinstance(result, Exception):
                 logging.error(f"❌ 티켓 처리 실패: {ticket.title}", exc_info=result)
 

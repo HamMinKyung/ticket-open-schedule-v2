@@ -10,7 +10,7 @@ from bs4 import BeautifulSoup
 from crawler.base import AsyncCrawlerBase
 from models.ticket import TicketInfo
 from utils.config import settings
-from utils.utils import extract_cast_from_lines, extract_open_round, extract_performance_period, normalize_title, resolve_region
+from utils.utils import extract_cast_from_lines, extract_open_round, extract_open_round_period, extract_performance_period, normalize_title, resolve_region
 
 logger = logging.getLogger(__name__)
 
@@ -67,7 +67,7 @@ class LGArtCrawler(AsyncCrawlerBase):
             logger.debug(f"[LGArtCrawler] 지역 필터 제외: title={title!r}, venue={venue!r}")
             return []
 
-        performance_period = extract_performance_period(text) or "-"
+        performance_period = extract_performance_period(text) or extract_open_round_period(text) or "-"
         round_info = extract_open_round(raw_title, text) or "-"
         cast = self._extract_cast(text)
         detail_url = item["detail_url"]
@@ -119,33 +119,6 @@ class LGArtCrawler(AsyncCrawlerBase):
         pattern = re.compile(rf"^\s*[-*]?\s*{key_pattern}\s*[:：]\s*(.+)$", re.M)
         match = pattern.search(text)
         return match.group(1).strip() if match else None
-
-    @staticmethod
-    def _extract_open_period(text: str) -> str | None:
-        compact_text = re.sub(r"\s+", " ", text)
-        match = re.search(
-            r"((?:\d+\s*차\s*)?티켓\s*오픈\s*공연\s*기간\s*[:：]\s*"
-            r"(?:\d{4}\s*년\s*)?\d{1,2}\s*월\s*\d{1,2}\s*일(?:\([^)]*\))?\s*~\s*"
-            r"(?:\d{4}\s*년\s*)?\d{1,2}\s*월\s*\d{1,2}\s*일(?:\([^)]*\))?)",
-            compact_text,
-        )
-        if match:
-            return LGArtCrawler._normalize_open_period(match.group(1))
-
-        for line in text.splitlines():
-            if "티켓" in line and "공연기간" in line:
-                return LGArtCrawler._normalize_open_period(line.strip(" -*"))
-        return None
-
-    @staticmethod
-    def _normalize_open_period(text: str) -> str:
-        text = re.sub(r"\s+", " ", text).strip()
-        text = re.sub(r"(\d+)\s*차", r"\1차", text)
-        text = re.sub(r"티켓\s*오픈", "티켓오픈", text)
-        text = re.sub(r"공연\s*기간", "공연기간", text)
-        text = re.sub(r"\s*[:：]\s*", ": ", text)
-        text = re.sub(r"^(?:\d+차\s*)?티켓오픈\s*공연기간:\s*", "", text)
-        return text
 
     def _extract_open_datetime(self, text: str) -> datetime | None:
         candidates = []

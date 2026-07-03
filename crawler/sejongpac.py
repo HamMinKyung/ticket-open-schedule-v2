@@ -105,7 +105,7 @@ class SejongPac(AsyncCrawlerBase):
             response.raise_for_status()
             detail_html = await response.text()
         soup = BeautifulSoup(detail_html, "html.parser")
-        category = venue = round_info = cast = performance_period = None;
+        category = venue = cast = performance_period = None;
         open_type = "일반예매"
         title = item["title"]
         solo_sale = False
@@ -185,11 +185,15 @@ class SejongPac(AsyncCrawlerBase):
                 })
 
         # (2) 티켓오픈회차 추출
+        # 이 사이트는 "티켓오픈회차" 값이 "1차/2차" 라벨이 아니라 해당 회차가 커버하는
+        # 공연 날짜(오픈기간)로 표기되는 경우가 있어, round_info와 별도로 보관한다.
+        round_raw = None
         round_section = soup.find('th', string='티켓오픈회차')
         if round_section:
             round_td = round_section.find_next_sibling("td")
             if round_td:
-                round_info = round_td.get_text(strip=True)
+                round_raw = round_td.get_text(strip=True)
+        round_label_from_raw = extract_open_round(round_raw) if round_raw else None
 
         # (3) 공연정보 항목 상세 파싱
         info_section = soup.find('th', string='공연정보')
@@ -215,8 +219,12 @@ class SejongPac(AsyncCrawlerBase):
                         category = "기타"
                 elif "공연장소" in line:
                     venue = line.split("공연장소")[-1].strip(": ： ·").strip()
-                elif "공연기간" in line:
-                    performance_period = extract_performance_period(line) or line.strip(": ： ·").strip()
+                elif "공연기간" in line or "공연일시" in line:
+                    value = extract_performance_period(line)
+                    if not value:
+                        parts = re.split(r"[:：]", line, maxsplit=1)
+                        value = parts[1].strip() if len(parts) > 1 else line.strip()
+                    performance_period = value
                 elif "선예매" in line:
                     open_type = "선예매"
                 if "세종문화티켓에서만" in line:
@@ -238,8 +246,13 @@ class SejongPac(AsyncCrawlerBase):
             tickets.append(TicketInfo(
                 title=title,  # 공연 제목
                 open_datetime=open_dt,  # 오픈 일시
-                round_info=extract_open_round(open_item["target"], title, round_info or "") or round_info or "-",  # 오픈 회차
-                performance_period=performance_period or extract_performance_period(*content.values()) or "-",  # 공연 기간
+                round_info=extract_open_round(open_item["target"], title) or round_label_from_raw or "-",  # 오픈 회차
+                performance_period=(
+                    performance_period
+                    or extract_performance_period(*content.values())
+                    or (round_raw if round_raw and not round_label_from_raw else None)
+                    or "-"
+                ),  # 공연 기간
                 cast=cast or "-",  # 출연진
                 detail_url=item["link"],  # 상세 링크
                 category=category or "-",  # 구분

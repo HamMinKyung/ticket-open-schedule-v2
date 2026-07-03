@@ -145,14 +145,20 @@ REGION_PATTERNS = {
     "경기": r"(경기|수원|용인|성남|안산|의왕|안양|평촌|고양|파주|부천|하남|과천|광명|평택|군포|서울랜드)",
     "부산": r"(부산|Busan|사직실내체육관)",
     "울산": r"(울산|HD아트센터|울산북구문화예술회관)",
-    "서울": r"(서울|Seoul|예스24라이브홀|예스24스테이지|예스24아트원|스카이아트홀|구름아래소극장|장충체육관|KBS아레나|예술의전당|홍익대 대학로|대학로)",
+    "서울": r"(서울|Seoul|예스24라이브홀|예스24스테이지|예스24아트원|스카이아트홀|구름아래소극장|장충체육관|KBS아레나|예술의전당|홍익대 대학로|대학로|세종문화회관)",
 }
 
 
 def resolve_region(*values: str, default_region: str = "서울") -> str | None:
     corpus = " ".join(str(value or "") for value in values)
 
-    unsupported_pattern = r"(?:%s)" % "|".join(map(re.escape, UNSUPPORTED_REGION_KEYWORDS))
+    # "세종"은 세종특별자치시(비수도권) 지역명이지만, "세종문화회관"은 서울 소재 공연장이라
+    # 단순 부분 문자열 매칭 시 오검출되므로 제외 처리한다.
+    unsupported_terms = [
+        rf"{re.escape(kw)}(?!문화회관)" if kw == "세종" else re.escape(kw)
+        for kw in UNSUPPORTED_REGION_KEYWORDS
+    ]
+    unsupported_pattern = r"(?:%s)" % "|".join(unsupported_terms)
     if re.search(unsupported_pattern, corpus, re.I):
         return None
 
@@ -223,4 +229,50 @@ def extract_performance_period(*values: str) -> str | None:
                 period = normalize_performance_period(match.group(1))
                 if period:
                     return period
+    return None
+
+
+def extract_open_round_period(*values: str) -> str | None:
+    """"N차 티켓오픈 공연기간" 처럼 특정 회차에 연결된 공연 기간을 추출한다.
+
+    extract_performance_period()는 "티켓오픈"이 포함된 줄을 의도적으로 건너뛰므로,
+    회차별 오픈 공지에 섞여 나오는 공연 기간은 이 함수로 별도 처리한다.
+    """
+    for value in values:
+        if not value:
+            continue
+        text = re.sub(r"[​-‏‪-‮]", "", str(value))
+        lines = [line.strip("※•-* \t\r") for line in text.splitlines()]
+        for idx, line in enumerate(lines):
+            if not line:
+                continue
+            normalized = re.sub(r"\s+", " ", line)
+            if "티켓오픈" not in normalized and "티켓 오픈" not in normalized:
+                continue
+            if (
+                "공연기간" not in normalized
+                and "공연 기간" not in normalized
+                and "오픈기간" not in normalized
+                and "오픈 기간" not in normalized
+            ):
+                continue
+
+            # 예: "3차 티켓오픈 공연기간: 2026년 8월 11일(화) ~ 8월 30일(일)"
+            match = re.search(
+                r"티켓\s*오픈\s*(?:공연\s*)?기간\s*[:：]?\s*(.+)$",
+                normalized,
+                flags=re.I,
+            )
+            if match:
+                period = re.sub(r"\s*공연\s*$", "", match.group(1).strip())
+                if period:
+                    return period
+
+            # 예: "2차 티켓오픈 공연 기간" 다음 줄에 "8월 25일(화) ~ 9월 17일(목) 공연"
+            if idx + 1 < len(lines):
+                next_line = re.sub(r"\s+", " ", lines[idx + 1]).strip()
+                if next_line:
+                    period = re.sub(r"\s*공연\s*$", "", next_line)
+                    if period:
+                        return period
     return None
