@@ -5,9 +5,10 @@ from bs4 import BeautifulSoup
 from crawler.base import AsyncCrawlerBase
 from utils.config import settings
 from models.ticket import TicketInfo
-from utils.utils import normalize_date_string, normalize_title
+from utils.utils import clean_cast_text, extract_open_round, normalize_date_string, normalize_title, resolve_region
 import logging
-import re
+
+logger = logging.getLogger(__name__)
 
 
 class InterParkCrawler(AsyncCrawlerBase):
@@ -100,6 +101,8 @@ class InterParkCrawler(AsyncCrawlerBase):
         perf_info = content.get(cfg["contents"]["performance_info"], "")
         venue = self._parse_perf(perf_info, cfg["contents"]["venue"]) or item.get("venueName", "")
         round_info = (
+                extract_open_round(item.get("title", ""), perf_info)
+                or
                 self._parse_perf(perf_info, cfg["contents"]["open_period"])
                 or self._parse_perf(perf_info, cfg["contents"]["open_period2"])
                 or self._parse_perf(perf_info, cfg["contents"]["period"])
@@ -107,19 +110,27 @@ class InterParkCrawler(AsyncCrawlerBase):
                 or self._parse_perf(perf_info, cfg["contents"]["datetime"])
                 or "-"
         )
-        cast = re.split(r'\[?［?creative team|creative］?\]?', content.get(cfg["contents"]["cast"], "-"), maxsplit=1,
-                        flags=re.IGNORECASE)[0].strip()
+        cast = clean_cast_text(content.get(cfg["contents"]["cast"], "-"))
         solo_sale = item.get("goodsSeatTypeStr") == "단독판매"
 
         # 일정 추출 및 필터링
         schedules = []
         for box in soup.select(cfg["selectors"]["schedule_box"]):
-            title = box.select_one(cfg["selectors"]["schedule_title"]).get_text(strip=True)
-            raw = normalize_date_string(box.select_one(cfg["selectors"]["schedule_date"]).get_text(strip=True))
-            dt = datetime.strptime(
-                f"{settings.current_year}.{raw}",
-                "%Y.%m.%d %H:%M"
-            )
+            title_tag = box.select_one(cfg["selectors"]["schedule_title"])
+            date_tag = box.select_one(cfg["selectors"]["schedule_date"])
+            if not title_tag or not date_tag:
+                logger.debug(f"[InterParkCrawler] 일정 selector 누락: notice={notice}")
+                continue
+            title = title_tag.get_text(strip=True)
+            raw = normalize_date_string(date_tag.get_text(strip=True))
+            try:
+                dt = datetime.strptime(
+                    f"{settings.current_year}.{raw}",
+                    "%Y.%m.%d %H:%M"
+                )
+            except ValueError as e:
+                logger.debug(f"[InterParkCrawler] 일정 날짜 파싱 실패: {raw!r} - {e}")
+                continue
 
             if self.start <= dt <= self.end:
                 schedules.append((title, dt))
@@ -130,7 +141,11 @@ class InterParkCrawler(AsyncCrawlerBase):
 
         # 지역 설정
         CONVERT_REGIONS = {"SEOUL": "서울", "GYEONGGI": "경기", "BUSAN": "부산", "ULSAN": "울산"}
-        regions = CONVERT_REGIONS[item.get("region", "SEOUL")]
+        fallback_region = CONVERT_REGIONS.get(item.get("region", "SEOUL"), "서울")
+        regions = resolve_region(venue, item.get("title", ""), default_region=fallback_region)
+        if not regions:
+            logger.debug(f"[InterParkCrawler] 지역 필터 제외: title={item.get('title')!r}, venue={venue!r}")
+            return []
         
         # 모든 유효 일정에 대해 TicketInfo 생성
         tickets: List[TicketInfo] = []

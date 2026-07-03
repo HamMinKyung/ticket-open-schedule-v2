@@ -6,11 +6,15 @@ from bs4 import BeautifulSoup
 
 from crawler.base import AsyncCrawlerBase
 from models.ticket import TicketInfo
-from utils import normalize_date_string, normalize_title
+from utils import extract_cast_from_lines, extract_open_round, normalize_date_string, normalize_title
 from utils.config import settings
 from html import unescape
 from datetime import datetime
 import re
+
+import logging
+
+logger = logging.getLogger(__name__)
 
 
 class SejongPac(AsyncCrawlerBase):
@@ -58,10 +62,10 @@ class SejongPac(AsyncCrawlerBase):
         items = []
         for page in self.cfg['pages']:
             await asyncio.sleep(random.uniform(1.0, 2.0))
-            payload = self.cfg["params"]
-            payload['pageIndex'] = str(page)
+            payload = {**self.cfg["params"], "pageIndex": str(page)}
 
             async with session.get(self.list_url, params=payload) as response:
+                response.raise_for_status()
                 html = await response.text()
                 soup = BeautifulSoup(html, 'html.parser')
                 rows = soup.select("div.tbl_list > table > tbody > tr")
@@ -71,12 +75,18 @@ class SejongPac(AsyncCrawlerBase):
                         continue
 
                     title_tag = cols[1].find("a")
+                    if not title_tag or not title_tag.get("href"):
+                        continue
                     title = unescape(title_tag.get_text(strip=True))
                     link = self.BASE_URL + title_tag["href"]
 
                     open_date = cols[3].get_text(strip=True)
-                    norm = normalize_date_string(open_date)
-                    dt = datetime.strptime(norm, "%Y-%m-%d %H:%M")
+                    try:
+                        norm = normalize_date_string(open_date)
+                        dt = datetime.strptime(norm, "%Y-%m-%d %H:%M")
+                    except ValueError as e:
+                        logger.debug(f"[SejongPac] 날짜 파싱 실패: {open_date!r} - {e}")
+                        continue
                     if not (self.start <= dt <= self.end):
                         continue
 
@@ -88,11 +98,12 @@ class SejongPac(AsyncCrawlerBase):
         return items
 
     async def _fetch_detail(self, session, item: Dict[str, Any]) -> List[TicketInfo]:
-        # print("세종문화회관 상세정보 수집:", item["title"], item["link"], item["open_date"])
         tickets: List[TicketInfo] = []
 
         content = {}
-        detail_html = await (await session.get(item["link"])).text()
+        async with session.get(item["link"]) as response:
+            response.raise_for_status()
+            detail_html = await response.text()
         soup = BeautifulSoup(detail_html, "html.parser")
         category = venue = round_info = cast = None;
         open_type = "일반예매"
@@ -115,6 +126,8 @@ class SejongPac(AsyncCrawlerBase):
         open_entries = []
         if open_section:
             open_td = open_section.find_next_sibling("td")
+            if not open_td:
+                return []
             open_lines = self.parse_td_with_paragraphs_or_list(open_td)
             for line in open_lines:
                 # 먼저 날짜 문자열을 표준 포맷(YYYY년 MM월 DD일 HH:MM)으로 정규화
@@ -174,13 +187,18 @@ class SejongPac(AsyncCrawlerBase):
         # (2) 티켓오픈회차 추출
         round_section = soup.find('th', string='티켓오픈회차')
         if round_section:
-            round_info = round_section.find_next_sibling("td").get_text(strip=True)
+            round_td = round_section.find_next_sibling("td")
+            if round_td:
+                round_info = round_td.get_text(strip=True)
 
         # (3) 공연정보 항목 상세 파싱
         info_section = soup.find('th', string='공연정보')
         if info_section:
             info_td = info_section.find_next_sibling("td")
-            info_lines = self.parse_td_with_paragraphs_or_list(info_td)
+            if not info_td:
+                info_lines = []
+            else:
+                info_lines = self.parse_td_with_paragraphs_or_list(info_td)
 
             for line in info_lines:
                 if "공연명" in line:
@@ -206,19 +224,20 @@ class SejongPac(AsyncCrawlerBase):
         intro_section = soup.find('th', string='공연소개')
         if intro_section:
             intro_td = intro_section.find_next_sibling("td")
-            cast = self.extract_cast_from_td(intro_td)
-
-        # print(f"세종문화회관: {title} {item['open_date']} {category} {round_info} {cast} {solo_sale} {venue} {item['link']} {open_type} {content}")
+            if intro_td:
+                cast = self.extract_cast_from_td(intro_td)
 
         # (6) 티켓정보 생성
         for open_item in open_entries:
             open_dt = open_item["time"]
+            if not (self.start <= open_dt <= self.end):
+                continue
 
             tickets.append(TicketInfo(
                 title=title,  # 공연 제목
                 open_datetime=open_dt,  # 오픈 일시
-                round_info=round_info or "-",  # 오픈 회차
-                cast=", ".join(cast) if cast else "-",  # 출연진
+                round_info=extract_open_round(open_item["target"], title, round_info or "") or round_info or "-",  # 오픈 회차
+                cast=cast or "-",  # 출연진
                 detail_url=item["link"],  # 상세 링크
                 category=category or "-",  # 구분
                 open_type=open_item["target"],  # 오픈 타입
@@ -237,27 +256,4 @@ class SejongPac(AsyncCrawlerBase):
         # 1) <p> 태그별로 텍스트를 한 줄씩 뽑아서 리스트로
         lines = self.parse_td_with_paragraphs_or_list(td_tag)
 
-        cast = []
-        for idx, line in enumerate(lines):
-            # 2) '출연진', '캐스팅', 'cast' 헤더 탐지 (대소문자 무시)
-            if re.search(r'\b(출연진|캐스팅|cast|캐릭터)\b', line, re.I):
-                # 3a) 같은 줄에 “:” 가 있으면, : 뒤만 split
-                if ":" in line:
-                    after = line.split(":", 1)[1]
-                    cast.append(after);
-                else:
-                    # 3b) 아니면 다음 줄부터, 빈 줄 또는 새 섹션(대괄호 등) 나오기 전까지
-                    for nxt in lines[idx + 1:]:
-                        if not nxt:
-                            break
-                        # 새 섹션으로 보이는 [..] 만날 경우 중단
-                        if re.match(r'^\[.+\]$', nxt) or re.search(r'\b(공연 정보|creative team|창작진)\b', line, re.I):
-                            break
-                        if re.search(r'\b(캐릭터)\b', line, re.I) and not "/" in nxt:
-                            # 캐릭터 정보인 경우, 캐릭터 이름만 추출
-                            continue
-                        else:
-                            cast.append(nxt)
-
-                break
-        return cast
+        return extract_cast_from_lines(lines)

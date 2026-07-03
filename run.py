@@ -10,10 +10,12 @@ import yaml
 from typing import Tuple
 
 from crawler.interpark import InterParkCrawler
+from crawler.lgart import LGArtCrawler
 from crawler.melon import MelonCrawler
 from crawler.sac import SacCrawler
 from crawler.sejongpac import SejongPac
 from crawler.ticketlink import TicketLinkCrawler
+from crawler.yes24 import Yes24Crawler
 from merge.merge import merge_ticket_sources
 from notion_writer.writer import NotionRepository
 from datetime import datetime, timedelta
@@ -41,7 +43,8 @@ async def main():
     dr = calc_date_range()
     logger.info(f"크롤링 기간: {dr[0]} ~ {dr[1]}")
     crawlers = [
-        InterParkCrawler(dr), MelonCrawler(dr), SejongPac(dr), SacCrawler(dr), TicketLinkCrawler(dr)
+        InterParkCrawler(dr), MelonCrawler(dr), SejongPac(dr), SacCrawler(dr), TicketLinkCrawler(dr), Yes24Crawler(dr),
+        LGArtCrawler(dr)
     ]
 
     # ✅ 예외가 발생해도 전체 실행 유지

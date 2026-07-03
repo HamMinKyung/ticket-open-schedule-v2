@@ -1,17 +1,18 @@
 # crawler/melon.py
 import logging
+import re
 
 logger = logging.getLogger(__name__)
 
 import asyncio
 import aiohttp
-from bs4 import BeautifulSoup, NavigableString, Tag
+from bs4 import BeautifulSoup, NavigableString
 from datetime import datetime
 from typing import List, Dict, Any, Tuple
 from crawler.base import AsyncCrawlerBase
 from utils.config import settings
 from models.ticket import TicketInfo
-from utils.utils import normalize_date_string, normalize_title
+from utils.utils import clean_cast_text, extract_cast_from_lines, extract_open_round, normalize_date_string, normalize_title, resolve_region
 import random
 
 
@@ -58,9 +59,10 @@ class MelonCrawler(AsyncCrawlerBase):
 
                 for li in soup.select("ul.list_ticket_cont li"):
                     title_tag = li.select_one("a.tit")
-                    if not title_tag:
+                    date_tag = li.select_one("span.date")
+                    if not title_tag or not date_tag:
                         continue
-                    raw_date = li.select_one("span.date").get_text(strip=True)
+                    raw_date = date_tag.get_text(strip=True)
                     pass_check = "오픈일정 보기" in raw_date
                     open_date = None
 
@@ -102,13 +104,22 @@ class MelonCrawler(AsyncCrawlerBase):
         soup = BeautifulSoup(html, 'html.parser')
 
         # 기본 정보 파싱
-        title = soup.select_one("p.tit_consert").get_text(strip=True).strip()
+        title_tag = soup.select_one("p.tit_consert")
+        if not title_tag:
+            logger.debug(f"[MelonCrawler] 상세 제목 없음: {detail_url}")
+            return []
+        title = title_tag.get_text(strip=True).strip()
         round_info, venue = self._parse_base_box(soup)
+        round_info = extract_open_round(title, round_info) or round_info
         only_sale = bool(soup.select_one(cfg['detail_selectors']['solo_icon']))
         content = self._parse_content(soup)
+        if venue == "-":
+            venue = self._extract_venue_from_content(content)
         cast = self._parse_cast_info(soup, content.get("출연진", "-"))
-        REGIONS_KEYWORDS = ("서울", "인천", "경기", "부산", "울산")
-        regions = next((kw for kw in REGIONS_KEYWORDS if kw in venue), "서울")
+        regions = resolve_region(venue, title)
+        if not regions:
+            logger.debug(f"[MelonCrawler] 지역 필터 제외: title={title!r}, venue={venue!r}")
+            return []
 
         logger.debug(f"지역 정보 org {venue}. conversion {regions}")
         
@@ -178,7 +189,10 @@ class MelonCrawler(AsyncCrawlerBase):
                     lines.append(f"{label} - {rest.strip()}")
                 else:
                     lines.append(txt)
-        return ", ".join(lines) if lines else (default_cast if default_cast else "-")
+        cast = clean_cast_text("\n".join(lines))
+        if cast != "-":
+            return cast
+        return clean_cast_text(default_cast)
 
     def _parse_base_box(self, soup: BeautifulSoup) -> Tuple[str, str]:
         base = soup.select_one("div.box_concert_time")
@@ -195,6 +209,23 @@ class MelonCrawler(AsyncCrawlerBase):
                     place = txt.split(":")[-1].strip()
         return round_info, place
 
+    @staticmethod
+    def _extract_venue_from_content(content: Dict[str, str]) -> str:
+        for text in content.values():
+            for line in text.splitlines():
+                match = re.search(r"-?\s*공\s*연\s*장\s*소\s*[:：]\s*(.+)", line)
+                if match:
+                    venue = match.group(1).strip(" \t\r\n-·ㆍ")
+                    if venue:
+                        return venue
+                if re.search(r"(?:공\s*연\s*)?일\s*시", line) and "@" in line:
+                    at_match = re.search(r"@\s*([^@\n\r|/]+)", line)
+                    if at_match:
+                        venue = at_match.group(1).strip(" \t\r\n-·ㆍ,，.。")
+                        if venue:
+                            return venue
+        return "-"
+
     def _parse_open_dates(self, soup: BeautifulSoup) -> List[Tuple[str, datetime]]:
         results: List[Tuple[str, datetime]] = []
         for dt_tag, dd_tag in zip(
@@ -205,7 +236,7 @@ class MelonCrawler(AsyncCrawlerBase):
             raw = dd_tag.get_text(strip=True).split(":", 1)[-1].strip()
             try:
                 norm = normalize_date_string(raw)
-                od = datetime.strptime(norm, "%Y년 %m월 %d일  %H:%M")
+                od = datetime.strptime(norm, "%Y년 %m월 %d일 %H:%M")
                 results.append((label, od))
             except (ValueError, AttributeError) as e:
                 logger.debug(f"오픈일정 날짜 파싱 실패: {e}")
@@ -262,6 +293,6 @@ class MelonCrawler(AsyncCrawlerBase):
                 if found:
                     cast_lines.append(text)
             if cast_lines:
-                result["출연진"] = "\n".join(cast_lines)
+                result["출연진"] = extract_cast_from_lines(cast_lines)
 
         return result

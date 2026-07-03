@@ -2,12 +2,15 @@ import aiohttp
 from bs4 import BeautifulSoup
 from datetime import datetime
 from typing import List, Dict
+import logging
 
-from utils.utils import normalize_date_string, normalize_title
+from utils.utils import extract_cast_from_lines, extract_open_round, normalize_date_string, normalize_title
 from models.ticket import TicketInfo
 from crawler.base import AsyncCrawlerBase
 from utils.config import settings
 import re
+
+logger = logging.getLogger(__name__)
 
 
 class SacCrawler(AsyncCrawlerBase):
@@ -49,19 +52,28 @@ class SacCrawler(AsyncCrawlerBase):
                 page += 1
         return results
 
-    async def _fetch_detail(self, session: aiohttp.ClientSession, item: Dict) -> TicketInfo:
+    async def _fetch_detail(self, session: aiohttp.ClientSession, item: Dict) -> List[TicketInfo]:
         # SN, PLACE_NAME, PRICE_INFO
         url = f"{self.base_url}{self.cfg['detail_endpoint']}{item['SN']}"
         # SN 값을 URL에 추가
         async with session.get(url) as resp:
+            resp.raise_for_status()
             html = await resp.text()
             soup = BeautifulSoup(html, "html.parser")
 
-            title = soup.find("p", class_="title").get_text(strip=True)
-            info_tags = soup.find("div", class_="cwa-top").find("ul").find_all("li")
+            title_tag = soup.find("p", class_="title")
+            top_box = soup.find("div", class_="cwa-top")
+            info_list = top_box.find("ul") if top_box else None
+            if not title_tag or not info_list:
+                logger.debug(f"[SacCrawler] 필수 상세 영역 없음: SN={item.get('SN')}")
+                return []
+
+            title = title_tag.get_text(strip=True)
+            info_tags = info_list.find_all("li")
 
             # Opening date
-            round_info = venue = None
+            round_info = ""
+            venue = None
             contents  = {}
             for info_box in info_tags:
                 info = info_box.find_all("span")
@@ -70,7 +82,7 @@ class SacCrawler(AsyncCrawlerBase):
                 if key == "기간" :
                     round_info = value
                 elif key == "시간":
-                    round_info += " "+value
+                    round_info = f"{round_info} {value}".strip()
                 elif key == "장소":
                     venue = value
                 else :
@@ -78,24 +90,18 @@ class SacCrawler(AsyncCrawlerBase):
 
 
             tab_box  = soup.find_all("div", class_="ctl-sub")
+            if len(tab_box) < 4:
+                logger.debug(f"[SacCrawler] 상세 탭 부족: SN={item.get('SN')}, tabs={len(tab_box)}")
+                return []
             # tab_box = 0: 관람 연령, 1: 공지- 티켓오픈, 2: 작품소개 - 출연진, 3: 할인정보-기타
             schedules = self._parse_schedule(tab_box[1])
+            if not schedules:
+                logger.debug(f"[SacCrawler] 오픈 일정 없음: SN={item.get('SN')}")
+                return []
             # 출연진
             p_tags = tab_box[2].find_all("p")
             lines = [p.get_text(strip=True) for p in p_tags if p.get_text(strip=True)]
-            cast = []
-            mode = None
-
-            for line in lines:
-                if "출연" in line:
-                    mode = "cast"
-                    continue
-                elif "프로그램" in line:
-                    mode = "program"
-                    continue
-
-                if mode == "cast":
-                    cast.append(line)
+            cast = extract_cast_from_lines(lines)
 
             contents["소개"] = "\n".join(lines)
 
@@ -104,17 +110,22 @@ class SacCrawler(AsyncCrawlerBase):
 
             tickets: List[TicketInfo] = []
             for schedule in schedules:
-                round_info = normalize_date_string(round_info)
+                if not (self.start <= schedule["datetime"] <= self.end):
+                    continue
+                normalized_round_info = (
+                    extract_open_round(schedule["type"], title, contents.get("소개", ""))
+                    or (normalize_date_string(round_info) if round_info else "-")
+                )
                 # 티켓 정보 생성
                 tickets.append(TicketInfo(
                     title=normalize_title(title),
                     open_datetime=schedule["datetime"],
-                    round_info=round_info,
-                    cast="\n".join(cast),
+                    round_info=normalized_round_info,
+                    cast=cast,
                     detail_url=url,
                     category="공연",
                     open_type=schedule["type"],
-                    venue=venue,
+                    venue=venue or "-",
                     providers={'예술의전당'},
                     solo_sale=schedule["solo_sale"],
                     content=contents,

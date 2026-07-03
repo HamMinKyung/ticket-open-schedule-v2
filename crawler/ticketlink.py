@@ -3,11 +3,14 @@ from datetime import datetime
 import aiohttp
 from bs4 import BeautifulSoup
 import re
+import logging
 
 from crawler.base import AsyncCrawlerBase
 from models.ticket import TicketInfo
 from utils.config import settings
-from utils.utils import normalize_title
+from utils.utils import clean_cast_text, extract_cast_from_lines, extract_open_round, normalize_title, resolve_region
+
+logger = logging.getLogger(__name__)
 
 
 class TicketLinkCrawler(AsyncCrawlerBase):
@@ -20,9 +23,9 @@ class TicketLinkCrawler(AsyncCrawlerBase):
     async def _fetch_list(self, session: aiohttp.ClientSession) -> List[Dict]:
         results: List[Dict] = []
         page = 1
-        print("Start fetching list from TicketLink.")
+        logger.debug("[TicketLinkCrawler] Start fetching list.")
         while True:
-            print(f"Fetching page {page}...")
+            logger.debug(f"[TicketLinkCrawler] Fetching page {page}.")
             params = {**self.cfg["params"], "page": page}
             async with session.get(self.list_url, params=params, headers=self.headers) as res:
                 res.raise_for_status()
@@ -30,13 +33,13 @@ class TicketLinkCrawler(AsyncCrawlerBase):
 
                 result_data = data.get("result", {})
                 if not result_data:
-                    print("No 'result' in response data. Stopping.")
+                    logger.debug("[TicketLinkCrawler] No 'result' in response data. Stopping.")
                     break
 
                 items = result_data.get("result", [])
-                print(f"Found {len(items)} items on page {page}.")
+                logger.debug(f"[TicketLinkCrawler] Found {len(items)} items on page {page}.")
                 if not items:
-                    print("No more items found. Stopping.")
+                    logger.debug("[TicketLinkCrawler] No more items found. Stopping.")
                     break
 
                 for item in items:
@@ -49,7 +52,7 @@ class TicketLinkCrawler(AsyncCrawlerBase):
                         if self.start <= open_time <= self.end:
                             results.append(item)
                     except (ValueError, TypeError) as e:
-                        print(f"Could not parse timestamp for item {item.get('noticeId')}: {e}")
+                        logger.debug(f"[TicketLinkCrawler] timestamp 파싱 실패: noticeId={item.get('noticeId')} - {e}")
                         continue
 
                 paging_info = result_data.get("paging", {})
@@ -59,7 +62,7 @@ class TicketLinkCrawler(AsyncCrawlerBase):
                 if current_page >= total_pages:
                     break
                 page += 1
-        print(f"Finished fetching list. Total items collected: {len(results)}")
+        logger.debug(f"[TicketLinkCrawler] Finished fetching list. Total items collected: {len(results)}")
         return results
 
     async def _fetch_detail(self, session: aiohttp.ClientSession, item: Dict) -> List[TicketInfo]:
@@ -73,7 +76,7 @@ class TicketLinkCrawler(AsyncCrawlerBase):
                 res.raise_for_status()
                 data = await res.json()
         except Exception as e:
-            print(f"Error fetching detail JSON for {item.get('title')}: {e}")
+            logger.debug(f"[TicketLinkCrawler] 상세 JSON 요청 실패: title={item.get('title')} - {e}")
             return []
 
         notice = data.get("notice", {}) or {}
@@ -84,12 +87,12 @@ class TicketLinkCrawler(AsyncCrawlerBase):
         is_exclusive = "단독판매" in title_text or "단독 판매" in title_text
 
         venue = notice.get("placeName") or item.get("placeName") or "-"
-        region = self._extract_region(venue, title_text)
+        region = resolve_region(venue, title_text)
 
-        print(f"지역 정보 org {venue}. conversion {region}")
+        logger.debug(f"[TicketLinkCrawler] 지역 정보 org={venue}, conversion={region}")
         
         if not region:
-            print(f"[Skip] Region not allowed/matched: title='{title_text}', venue='{venue}'")
+            logger.debug(f"[TicketLinkCrawler] 지역 필터 제외: title={title_text!r}, venue={venue!r}")
             return []
 
         category = self._category_from_title(title_text)
@@ -100,11 +103,11 @@ class TicketLinkCrawler(AsyncCrawlerBase):
         body_soup = BeautifulSoup(content_html, "html.parser")
         body_text = body_soup.get_text("\n", strip=True)
         period = self._pick_performance_period(body_text) or "-"
-        open_round = period
+        open_round = extract_open_round(title_text, body_text) or period
 
         reserveWebUrl = notice.get("reserveWebUrl") or item.get("reserveWebUrl") or ""
         open_type = "일반예매" if reserveWebUrl  else "티켓오픈"
-        print(f"오픈 타입 reserveWebUrl {reserveWebUrl}. open_type {open_type}")
+        logger.debug(f"[TicketLinkCrawler] 오픈 타입 reserveWebUrl={reserveWebUrl}, open_type={open_type}")
 
         cast_str = self.extract_cast_from_body(body_soup)
 
@@ -122,7 +125,7 @@ class TicketLinkCrawler(AsyncCrawlerBase):
 
         ts = notice.get("ticketOpenDatetime") or data.get("ticketOpenDatetime") or item.get("ticketOpenDatetime")
         if not ts:
-            print(f"Missing ticketOpenDatetime for noticeId={notice_id}")
+            logger.debug(f"[TicketLinkCrawler] ticketOpenDatetime 없음: noticeId={notice_id}")
             return []
         open_dt = datetime.fromtimestamp(int(ts) / 1000)
 
@@ -131,7 +134,7 @@ class TicketLinkCrawler(AsyncCrawlerBase):
             open_datetime=open_dt,
             round_info=open_round,
             cast=cast_str,
-            detail_url=product_url or "-",
+            detail_url=product_url or detail_url,
             category=str(category).strip(),
             open_type=open_type,
             venue=venue.strip() if isinstance(venue, str) else "-",
@@ -190,22 +193,6 @@ class TicketLinkCrawler(AsyncCrawlerBase):
         return sections
 
     @staticmethod
-    def _extract_region(venue: str, title_text: str, default_region: str = "서울") -> str | None:
-        DISALLOWED_KEYWORDS = ["인천", "대구", "광주", "대전", "세종", "강원", "강원도", "충북", "충청북도", "충남", "충청남도", "전북", "전라북도",
-                               "전남", "전라남도", "경북", "경상북도", "경남", "경상남도", "제주", "제주도", "포항", "경주", "구미", "창원", "김해",
-                               "진주", "전주", "여수", "순천", "목포", "청주", "천안", "아산", "당진", "춘천", "원주", "강릉", "서귀포"]
-        REGION_MAP = {"서울": r"(서울|Seoul)", "경기": r"(경기|수원|용인|성남|안산|의왕|안양|평촌|고양|파주|부천|하남|과천|광명)", "부산": r"(부산|Busan)",
-                      "울산": r"(울산)"}
-        corpus = " ".join(filter(None, [venue, title_text]))
-        EXCLUDE_PATTERNS = re.compile(r"(?:%s)" % "|".join(map(re.escape, DISALLOWED_KEYWORDS)), re.I)
-        if EXCLUDE_PATTERNS.search(corpus):
-            return None
-        for region, pat in REGION_MAP.items():
-            if re.search(pat, corpus, re.I):
-                return region
-        return default_region
-
-    @staticmethod
     def _pick_performance_period(text: str) -> str | None:
         if not text: return None
         text = re.sub(r"[\u200b-\u200f\u202a-\u202e]", "", text)
@@ -257,4 +244,9 @@ class TicketLinkCrawler(AsyncCrawlerBase):
                     break
                 lines.append(txt)
 
-        return ", ".join(lines)
+        cast = clean_cast_text("\n".join(lines))
+        if cast != "-":
+            return cast
+
+        body_lines = [TicketLinkCrawler._norm_txt(el) for el in body_soup.find_all(["p", "div"])]
+        return extract_cast_from_lines(body_lines)

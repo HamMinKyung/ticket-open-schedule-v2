@@ -24,7 +24,7 @@ class AsyncCrawlerBase(ABC):
         pass
 
     @abstractmethod
-    async def _fetch_detail(self, session: aiohttp.ClientSession, item: Dict) -> Dict:
+    async def _fetch_detail(self, session: aiohttp.ClientSession, item: Dict) -> List[TicketInfo]:
         pass
 
     async def crawl(self) -> List[TicketInfo]:

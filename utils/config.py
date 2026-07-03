@@ -120,6 +120,34 @@ class Settings(BaseSettings):
                  "X-Requested-With": "XMLHttpRequest",
             },
             "detail_endpoint": "/help/notice/",
+        },
+        'yes24': {
+            'base_url': "https://ticket.yes24.com",
+            'list_endpoint': "/New/Notice/Ajax/axList.aspx",
+            'detail_endpoint': "/New/Notice/Ajax/axRead.aspx",
+            "params": {
+                "page": "1",
+                "size": "20",
+                "genre": "",
+                "province": "",
+                "order": "2",
+                "searchType": "All",
+                "searchText": "",
+            },
+            "pages": [1, 2, 3, 4, 5],
+            "headers": {
+                "Referer": "https://ticket.yes24.com/Notice?Gcode=009_215",
+                "Origin": "https://ticket.yes24.com",
+                "User-Agent": USER_AGENT,
+                "X-Requested-With": "XMLHttpRequest",
+            },
+        },
+        'lg_art': {
+            'base_url': "https://www.lgart.com",
+            'list_endpoint': "/community/ko/notice?q=M2M3ODcyOWFjYjQ5NDdiN2E4YTBmOWMzN2VlZDAwYWU%3d",
+            "headers": {
+                "User-Agent": USER_AGENT,
+            },
         }
     }
 
