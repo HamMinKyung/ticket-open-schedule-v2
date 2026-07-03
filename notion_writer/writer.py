@@ -95,6 +95,9 @@ class NotionRepository:
             "오픈 회차": {
                 "rich_text": [{"type": "text", "text": {"content": ticket.round_info}}]
             },
+            "공연 기간": {
+                "rich_text": [{"type": "text", "text": {"content": ticket.performance_period[:2000]}}]
+            },
             "오픈 타입": {
                 "multi_select": [{"name": name} for name in sorted(ticket.open_type_all)]
             },

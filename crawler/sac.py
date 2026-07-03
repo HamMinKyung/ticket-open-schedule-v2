@@ -79,11 +79,7 @@ class SacCrawler(AsyncCrawlerBase):
                 info = info_box.find_all("span")
                 key =  info[0].get_text(strip=True) if len(info) > 0 else ""
                 value = info[1].get_text(strip=True) if len(info) > 1 else ""
-                if key == "기간" :
-                    round_info = value
-                elif key == "시간":
-                    round_info = f"{round_info} {value}".strip()
-                elif key == "장소":
+                if key == "장소":
                     venue = value
                 else :
                     contents[key] = value  # value가 없으면 빈 문자열이 들어감
@@ -114,13 +110,14 @@ class SacCrawler(AsyncCrawlerBase):
                     continue
                 normalized_round_info = (
                     extract_open_round(schedule["type"], title, contents.get("소개", ""))
-                    or (normalize_date_string(round_info) if round_info else "-")
+                    or "-"
                 )
                 # 티켓 정보 생성
                 tickets.append(TicketInfo(
                     title=normalize_title(title),
                     open_datetime=schedule["datetime"],
                     round_info=normalized_round_info,
+                    performance_period="-",
                     cast=cast,
                     detail_url=url,
                     category="공연",

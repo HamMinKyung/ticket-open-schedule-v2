@@ -12,7 +12,7 @@ from typing import List, Dict, Any, Tuple
 from crawler.base import AsyncCrawlerBase
 from utils.config import settings
 from models.ticket import TicketInfo
-from utils.utils import clean_cast_text, extract_cast_from_lines, extract_open_round, normalize_date_string, normalize_title, resolve_region
+from utils.utils import clean_cast_text, extract_cast_from_lines, extract_open_round, extract_performance_period, normalize_date_string, normalize_title, resolve_region
 import random
 
 
@@ -109,10 +109,12 @@ class MelonCrawler(AsyncCrawlerBase):
             logger.debug(f"[MelonCrawler] 상세 제목 없음: {detail_url}")
             return []
         title = title_tag.get_text(strip=True).strip()
-        round_info, venue = self._parse_base_box(soup)
-        round_info = extract_open_round(title, round_info) or round_info
+        round_info, venue, performance_period = self._parse_base_box(soup)
+        round_info = extract_open_round(title, round_info) or "-"
         only_sale = bool(soup.select_one(cfg['detail_selectors']['solo_icon']))
         content = self._parse_content(soup)
+        if not performance_period or performance_period == "-":
+            performance_period = extract_performance_period(*content.values()) or "-"
         if venue == "-":
             venue = self._extract_venue_from_content(content)
         cast = self._parse_cast_info(soup, content.get("출연진", "-"))
@@ -133,6 +135,7 @@ class MelonCrawler(AsyncCrawlerBase):
                         title=normalize_title(title.strip()),
                         open_datetime=od,
                         round_info=round_info,
+                        performance_period=performance_period,
                         cast=cast,
                         detail_url=detail_url,
                         category=item['genre'].strip(),
@@ -150,6 +153,7 @@ class MelonCrawler(AsyncCrawlerBase):
                 title=normalize_title(title.strip()),
                 open_datetime=item['open_date'],
                 round_info=round_info,
+                performance_period=performance_period,
                 cast=cast,
                 detail_url=detail_url,
                 category=item['genre'].strip(),
@@ -194,10 +198,11 @@ class MelonCrawler(AsyncCrawlerBase):
             return cast
         return clean_cast_text(default_cast)
 
-    def _parse_base_box(self, soup: BeautifulSoup) -> Tuple[str, str]:
+    def _parse_base_box(self, soup: BeautifulSoup) -> Tuple[str, str, str]:
         base = soup.select_one("div.box_concert_time")
         round_info = "-"
         place = "-"
+        performance_period = "-"
         if base:
             for tag in base.find_all(['span', 'p', 'div']):
                 txt = tag.get_text(strip=True)
@@ -207,7 +212,9 @@ class MelonCrawler(AsyncCrawlerBase):
                     round_info = txt.split("오픈기간")[-1].strip(":：· ").strip()
                 elif "공연 장소" in txt or "공연장소" in txt:
                     place = txt.split(":")[-1].strip()
-        return round_info, place
+                else:
+                    performance_period = extract_performance_period(txt) or performance_period
+        return round_info, place, performance_period
 
     @staticmethod
     def _extract_venue_from_content(content: Dict[str, str]) -> str:

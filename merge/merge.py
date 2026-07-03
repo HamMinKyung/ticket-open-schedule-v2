@@ -18,6 +18,10 @@ def _round_score(round_info: str) -> tuple[int, int]:
     return has_open_round, len(round_info or "")
 
 
+def _text_score(value: str) -> tuple[int, int]:
+    return int(bool(value and value != "-")), len(value or "")
+
+
 def merge_ticket_sources(tickets: List[TicketInfo]) -> List[TicketInfo]:
     merged: "OrderedDict[Tuple[str, datetime], TicketInfo]" = OrderedDict()
     for tk in tickets:
@@ -41,6 +45,8 @@ def merge_ticket_sources(tickets: List[TicketInfo]) -> List[TicketInfo]:
             merged[key].open_type_all |= tk.open_type_all
             if tk.round_info != "-" and _round_score(tk.round_info) > _round_score(merged[key].round_info):
                 merged[key].round_info = tk.round_info
+            if _text_score(tk.performance_period) > _text_score(merged[key].performance_period):
+                merged[key].performance_period = tk.performance_period
             if merged[key].venue == "-" and tk.venue != "-":
                 merged[key].venue = tk.venue
             if merged[key].cast == "-" and tk.cast != "-":

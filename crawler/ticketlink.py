@@ -103,7 +103,7 @@ class TicketLinkCrawler(AsyncCrawlerBase):
         body_soup = BeautifulSoup(content_html, "html.parser")
         body_text = body_soup.get_text("\n", strip=True)
         period = self._pick_performance_period(body_text) or "-"
-        open_round = extract_open_round(title_text, body_text) or period
+        open_round = extract_open_round(title_text, body_text) or "-"
 
         reserveWebUrl = notice.get("reserveWebUrl") or item.get("reserveWebUrl") or ""
         open_type = "일반예매" if reserveWebUrl  else "티켓오픈"
@@ -133,6 +133,7 @@ class TicketLinkCrawler(AsyncCrawlerBase):
             title=normalize_title(title_text),
             open_datetime=open_dt,
             round_info=open_round,
+            performance_period=period,
             cast=cast_str,
             detail_url=product_url or detail_url,
             category=str(category).strip(),
@@ -196,9 +197,9 @@ class TicketLinkCrawler(AsyncCrawlerBase):
     def _pick_performance_period(text: str) -> str | None:
         if not text: return None
         text = re.sub(r"[\u200b-\u200f\u202a-\u202e]", "", text)
-        m = re.search(r"^\s*[-–—•]?\s*공연\s*기간\s*[:：]\s*(.+)$", text, re.MULTILINE)
+        m = re.search(r"^\s*[-–—•]?\s*공연기간\s*[:：]\s*(.+)$", text, re.MULTILINE)
         if m: return m.group(1).strip()
-        m2 = re.search(r"^\s*[-–—•]?\s*공연\s*기간\s*[-–—]\s*(.+)$", text, re.MULTILINE)
+        m2 = re.search(r"^\s*[-–—•]?\s*공연기간\s*[-–—]\s*(.+)$", text, re.MULTILINE)
         if m2: return m2.group(1).strip()
         return None
 

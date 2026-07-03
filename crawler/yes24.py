@@ -9,7 +9,7 @@ from bs4 import BeautifulSoup
 from crawler.base import AsyncCrawlerBase
 from models.ticket import TicketInfo
 from utils.config import settings
-from utils.utils import extract_cast_from_lines, extract_open_round, normalize_title, resolve_region
+from utils.utils import extract_cast_from_lines, extract_open_round, extract_performance_period, normalize_title, resolve_region
 
 logger = logging.getLogger(__name__)
 
@@ -91,8 +91,9 @@ class Yes24Crawler(AsyncCrawlerBase):
         title = self._pick_first_overview_value(overview, "공연 제목", "공연명") or item["title"]
         round_info = (
             extract_open_round(item.get("open_type", ""), item.get("raw_title", ""), overview)
-            or self._build_round_info(overview)
+            or "-"
         )
+        performance_period = self._build_performance_period(overview)
         venue = self._pick_first_overview_value(overview, "공연 장소", "공연장소", "장소") or "-"
         cast = self._extract_cast(content) or "-"
         category = self._category_from_title(title)
@@ -108,6 +109,7 @@ class Yes24Crawler(AsyncCrawlerBase):
             title=normalize_title(title),
             open_datetime=item["open_datetime"],
             round_info=round_info,
+            performance_period=performance_period,
             cast=cast,
             detail_url=product_url,
             category=category,
@@ -205,10 +207,12 @@ class Yes24Crawler(AsyncCrawlerBase):
                 return value
         return None
 
-    def _build_round_info(self, overview: str) -> str:
-        period = self._pick_first_overview_value(overview, "공연 기간", "공연기간", "기간", "일시")
-        time = self._pick_first_overview_value(overview, "공연 시간", "공연시간", "시간")
-        return " ".join(part for part in [period, time] if part) or "-"
+    def _build_performance_period(self, overview: str) -> str:
+        return (
+            self._pick_first_overview_value(overview, "공연기간")
+            or extract_performance_period(overview)
+            or "-"
+        )
 
     @staticmethod
     def _extract_cast(content: Dict[str, str]) -> str | None:

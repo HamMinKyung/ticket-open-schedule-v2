@@ -10,7 +10,7 @@ from bs4 import BeautifulSoup
 from crawler.base import AsyncCrawlerBase
 from models.ticket import TicketInfo
 from utils.config import settings
-from utils.utils import extract_cast_from_lines, extract_open_round, normalize_title, resolve_region
+from utils.utils import extract_cast_from_lines, extract_open_round, extract_performance_period, normalize_title, resolve_region
 
 logger = logging.getLogger(__name__)
 
@@ -67,7 +67,8 @@ class LGArtCrawler(AsyncCrawlerBase):
             logger.debug(f"[LGArtCrawler] 지역 필터 제외: title={title!r}, venue={venue!r}")
             return []
 
-        round_info = self._extract_open_period(text) or extract_open_round(raw_title, text) or "-"
+        performance_period = extract_performance_period(text) or "-"
+        round_info = extract_open_round(raw_title, text) or "-"
         cast = self._extract_cast(text)
         detail_url = item["detail_url"]
 
@@ -75,6 +76,7 @@ class LGArtCrawler(AsyncCrawlerBase):
             title=normalize_title(title),
             open_datetime=open_dt,
             round_info=round_info,
+            performance_period=performance_period,
             cast=cast,
             detail_url=detail_url,
             category=self._category_from_title(title),

@@ -10,6 +10,7 @@ class TicketInfo(BaseModel):
     title: str = Field(..., alias="공연 제목")
     open_datetime: datetime = Field(..., alias="오픈 일시")
     round_info: str = Field("-", alias="오픈 회차")
+    performance_period: str = Field("-", alias="공연 기간")
     cast: str = Field("-", alias="출연진")
     detail_url: str = Field("-", alias="상세 링크(원본)")
     category: str = Field("-", alias="구분")

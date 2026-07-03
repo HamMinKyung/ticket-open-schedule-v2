@@ -7,7 +7,7 @@ from bs4 import BeautifulSoup
 from crawler.base import AsyncCrawlerBase
 from utils.config import settings
 from models.ticket import TicketInfo
-from utils.utils import clean_cast_text, extract_open_round, normalize_date_string, normalize_title, resolve_region
+from utils.utils import clean_cast_text, extract_open_round, extract_performance_period, normalize_date_string, normalize_title, resolve_region
 import logging
 
 logger = logging.getLogger(__name__)
@@ -234,18 +234,12 @@ class InterParkCrawler(AsyncCrawlerBase):
         )
         round_info = (
                 extract_open_round(item.get("title", ""), perf_info, page_text)
-                or self._extract_open_period(perf_info)
-                or self._extract_open_period(page_text)
-                or self._parse_perf(perf_info, cfg["contents"]["open_period"])
-                or self._parse_perf(page_text, cfg["contents"]["open_period"])
                 or self._parse_perf(perf_info, cfg["contents"]["open_period2"])
                 or self._parse_perf(page_text, cfg["contents"]["open_period2"])
-                or self._parse_perf(perf_info, cfg["contents"]["period"])
-                or self._parse_perf(page_text, cfg["contents"]["period"])
-                or self._parse_perf(perf_info, cfg["contents"]["period2"])
-                or self._parse_perf(page_text, cfg["contents"]["period2"])
-                or self._parse_perf(perf_info, cfg["contents"]["datetime"])
-                or self._parse_perf(page_text, cfg["contents"]["datetime"])
+                or "-"
+        )
+        performance_period = (
+                extract_performance_period(perf_info, page_text)
                 or "-"
         )
         cast = clean_cast_text(cast_info or "-")
@@ -295,6 +289,7 @@ class InterParkCrawler(AsyncCrawlerBase):
                 title=normalize_title(item.get("title", "-").strip()),  # 공연 제목
                 open_datetime=open_dt,  # 오픈 일시
                 round_info=round_info,  # 오픈 회차
+                performance_period=performance_period,  # 공연 기간
                 cast=cast,  # 출연진
                 detail_url=detail_url,  # 상세 링크
                 category=item.get("goodsGenreStr", "-").strip(),  # 구분

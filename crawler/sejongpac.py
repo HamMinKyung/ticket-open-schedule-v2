@@ -6,7 +6,7 @@ from bs4 import BeautifulSoup
 
 from crawler.base import AsyncCrawlerBase
 from models.ticket import TicketInfo
-from utils import extract_cast_from_lines, extract_open_round, normalize_date_string, normalize_title
+from utils import extract_cast_from_lines, extract_open_round, extract_performance_period, normalize_date_string, normalize_title
 from utils.config import settings
 from html import unescape
 from datetime import datetime
@@ -105,7 +105,7 @@ class SejongPac(AsyncCrawlerBase):
             response.raise_for_status()
             detail_html = await response.text()
         soup = BeautifulSoup(detail_html, "html.parser")
-        category = venue = round_info = cast = None;
+        category = venue = round_info = cast = performance_period = None;
         open_type = "일반예매"
         title = item["title"]
         solo_sale = False
@@ -215,6 +215,8 @@ class SejongPac(AsyncCrawlerBase):
                         category = "기타"
                 elif "공연장소" in line:
                     venue = line.split("공연장소")[-1].strip(": ： ·").strip()
+                elif "공연기간" in line:
+                    performance_period = extract_performance_period(line) or line.strip(": ： ·").strip()
                 elif "선예매" in line:
                     open_type = "선예매"
                 if "세종문화티켓에서만" in line:
@@ -237,6 +239,7 @@ class SejongPac(AsyncCrawlerBase):
                 title=title,  # 공연 제목
                 open_datetime=open_dt,  # 오픈 일시
                 round_info=extract_open_round(open_item["target"], title, round_info or "") or round_info or "-",  # 오픈 회차
+                performance_period=performance_period or extract_performance_period(*content.values()) or "-",  # 공연 기간
                 cast=cast or "-",  # 출연진
                 detail_url=item["link"],  # 상세 링크
                 category=category or "-",  # 구분

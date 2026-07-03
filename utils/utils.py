@@ -192,3 +192,35 @@ def extract_open_round(*values: str) -> str | None:
         if open_round:
             return open_round
     return None
+
+
+def normalize_performance_period(text: str | None) -> str | None:
+    if not text:
+        return None
+    text = re.sub(r"[\u200b-\u200f\u202a-\u202e]", "", str(text))
+    text = re.sub(r"\s+", " ", text).strip(" \t\r\n-–—•·ㆍ:：")
+    return text or None
+
+
+def extract_performance_period(*values: str) -> str | None:
+    for value in values:
+        if not value:
+            continue
+        text = re.sub(r"[\u200b-\u200f\u202a-\u202e]", "", str(value))
+        for raw_line in text.splitlines():
+            line = re.sub(r"\s+", " ", raw_line).strip()
+            if not line:
+                continue
+            compact = re.sub(r"\s+", "", line)
+            if any(word in compact for word in ("티켓오픈", "티켓오픈일", "오픈일시", "예매일시")):
+                continue
+            match = re.search(
+                r"(?:^|[-–—•·ㆍ]\s*)공연기간\s*[:：\-–—·ㆍ]?\s*(.+)$",
+                line,
+                re.I,
+            )
+            if match:
+                period = normalize_performance_period(match.group(1))
+                if period:
+                    return period
+    return None
