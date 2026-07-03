@@ -10,6 +10,8 @@ def normalize_date_string(date_text: str) -> str:
     return text
 
 def normalize_title(text: str) -> str:
+    # 제목 앞의 연도는 표기용으로 제거한다.
+    text = re.sub(r'^\s*\d{4}\s+', ' ', text)
     # 소괄호는 보통 부가 정보로 보고 제거한다.
     text = re.sub(r'\s*\(.*?\)\s*', ' ', text)
 
@@ -44,8 +46,7 @@ def normalize_title(text: str) -> str:
 def normalize_title_for_merge(text: str) -> str:
     text = normalize_title(text)
 
-    # 지역/연도/장르/오픈 회차처럼 사이트별 제목 앞뒤에 붙는 수식어를 병합 키에서 제거한다.
-    text = re.sub(r'^\s*\d{4}\s+', ' ', text)
+    # 지역/장르/오픈 회차처럼 사이트별 제목 앞뒤에 붙는 수식어를 병합 키에서 제거한다.
     text = re.sub(r'\b(뮤지컬|연극|콘서트|클래식|오페라|전시|공연)\b', ' ', text, flags=re.IGNORECASE)
     text = re.sub(r'\b\d+\s*차(?:팀)?\b', ' ', text)
     text = re.sub(r'\b(마지막|앵콜|패키지|하반기|상반기)\b', ' ', text)
