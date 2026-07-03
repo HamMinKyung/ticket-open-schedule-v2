@@ -1,5 +1,6 @@
 from typing import List, Dict, Any, Optional
 from datetime import datetime
+import re
 
 from bs4 import BeautifulSoup
 from crawler.base import AsyncCrawlerBase
@@ -69,6 +70,38 @@ class InterParkCrawler(AsyncCrawlerBase):
 
         return None
 
+    @staticmethod
+    def _extract_open_period(perf_text: str) -> Optional[str]:
+        if not perf_text:
+            return None
+
+        lines = [line.strip("※•-* \t\r") for line in perf_text.splitlines()]
+        for idx, line in enumerate(lines):
+            if not line:
+                continue
+            normalized = re.sub(r"\s+", " ", line)
+            if "티켓오픈" not in normalized and "티켓 오픈" not in normalized:
+                continue
+            if "공연기간" not in normalized and "공연 기간" not in normalized:
+                continue
+
+            # 3차 티켓오픈 공연기간: 2026년 8월 11일(화) ~ 8월 30일(일)
+            match = re.search(
+                r"티켓\s*오픈\s*공연\s*기간\s*[:：]?\s*(.+)$",
+                normalized,
+                flags=re.I,
+            )
+            if match:
+                return re.sub(r"\s*공연\s*$", "", match.group(1).strip())
+
+            # 2차 티켓오픈 공연 기간 / 8월 25일(화) ~ 9월 17일(목) 공연
+            if idx + 1 < len(lines):
+                next_line = re.sub(r"\s+", " ", lines[idx + 1]).strip()
+                if next_line:
+                    return re.sub(r"\s*공연\s*$", "", next_line)
+
+        return None
+
     async def _fetch_detail(self, session, item: Dict[str, Any]) -> List[TicketInfo]:
         cfg = settings.CRAWLERS['inter_park']
         notice = item["noticeId"]
@@ -101,13 +134,13 @@ class InterParkCrawler(AsyncCrawlerBase):
         perf_info = content.get(cfg["contents"]["performance_info"], "")
         venue = self._parse_perf(perf_info, cfg["contents"]["venue"]) or item.get("venueName", "")
         round_info = (
-                extract_open_round(item.get("title", ""), perf_info)
-                or
-                self._parse_perf(perf_info, cfg["contents"]["open_period"])
+                self._extract_open_period(perf_info)
+                or self._parse_perf(perf_info, cfg["contents"]["open_period"])
                 or self._parse_perf(perf_info, cfg["contents"]["open_period2"])
                 or self._parse_perf(perf_info, cfg["contents"]["period"])
                 or self._parse_perf(perf_info, cfg["contents"]["period2"])
                 or self._parse_perf(perf_info, cfg["contents"]["datetime"])
+                or extract_open_round(item.get("title", ""), perf_info)
                 or "-"
         )
         cast = clean_cast_text(content.get(cfg["contents"]["cast"], "-"))
