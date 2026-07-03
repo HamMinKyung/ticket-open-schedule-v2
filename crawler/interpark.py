@@ -168,12 +168,18 @@ class InterParkCrawler(AsyncCrawlerBase):
             normalized = re.sub(r"\s+", " ", line)
             if "티켓오픈" not in normalized and "티켓 오픈" not in normalized:
                 continue
-            if "공연기간" not in normalized and "공연 기간" not in normalized:
+            if (
+                "공연기간" not in normalized
+                and "공연 기간" not in normalized
+                and "오픈기간" not in normalized
+                and "오픈 기간" not in normalized
+            ):
                 continue
 
             # 3차 티켓오픈 공연기간: 2026년 8월 11일(화) ~ 8월 30일(일)
+            # #3차 티켓 오픈 기간 : 2026년 7월 28일(화) - 8월 17일(월)
             match = re.search(
-                r"티켓\s*오픈\s*공연\s*기간\s*[:：]?\s*(.+)$",
+                r"티켓\s*오픈\s*(?:공연\s*)?기간\s*[:：]?\s*(.+)$",
                 normalized,
                 flags=re.I,
             )
@@ -227,7 +233,8 @@ class InterParkCrawler(AsyncCrawlerBase):
             or item.get("venueName", "")
         )
         round_info = (
-                self._extract_open_period(perf_info)
+                extract_open_round(item.get("title", ""), perf_info, page_text)
+                or self._extract_open_period(perf_info)
                 or self._extract_open_period(page_text)
                 or self._parse_perf(perf_info, cfg["contents"]["open_period"])
                 or self._parse_perf(page_text, cfg["contents"]["open_period"])
@@ -239,7 +246,6 @@ class InterParkCrawler(AsyncCrawlerBase):
                 or self._parse_perf(page_text, cfg["contents"]["period2"])
                 or self._parse_perf(perf_info, cfg["contents"]["datetime"])
                 or self._parse_perf(page_text, cfg["contents"]["datetime"])
-                or extract_open_round(item.get("title", ""), perf_info or page_text)
                 or "-"
         )
         cast = clean_cast_text(cast_info or "-")
