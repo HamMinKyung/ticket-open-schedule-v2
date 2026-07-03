@@ -16,6 +16,7 @@ import re
 import os
 from datetime import timedelta
 import glob
+from urllib.parse import quote
 
 
 def _notion_call(fn, *args, retries: int = 3, **kwargs):
@@ -56,11 +57,10 @@ class NotionRepository:
         """
         동일 제목 및 오픈일시의 페이지가 이미 존재하는지 조회합니다.
         """
-        local_dt = ticket.open_datetime.astimezone(settings.user_timezone).replace(tzinfo=settings.DEFAULT_TIMEZONE)
+        local_dt = self._local_open_datetime(ticket)
         iso_date = local_dt.isoformat(timespec="seconds")
-        ds_id = self._resolve_data_source_id(self.database_id)
-        response = self.client.data_sources.query(
-            data_source_id=ds_id,
+        response = self._query_collection(
+            self.database_id,
             filter={
                 "and": [
                     {"property": "공연 제목", "title": {"equals": ticket.title}},
@@ -79,67 +79,66 @@ class NotionRepository:
         """
         TicketInfo 모델을 Notion 페이지 속성(JSON)으로 변환합니다.
         """
-        local_dt = ticket.open_datetime.astimezone(settings.user_timezone).replace(tzinfo=settings.DEFAULT_TIMEZONE)
+        local_dt = self._local_open_datetime(ticket)
         iso_date = local_dt.isoformat(timespec="seconds")
 
-        # 상세 링크
-        for idx, url in enumerate(ticket.detail_url_all):
-            props = {
-                "공연 제목": {
-                    "title": [{"type": "text", "text": {"content": ticket.title}}]
-                },
-                "구분": {
-                    "rich_text": [{"type": "text", "text": {"content": ticket.category}}]
-                },
-                "오픈 일시": {
-                    "date": {"start": iso_date}
-                },
-                "오픈 회차": {
-                    "rich_text": [{"type": "text", "text": {"content": ticket.round_info}}]
-                },
-                "오픈 타입": {
-                    "multi_select": [{"name": name} for name in ticket.open_type_all]
-                },
-                "공연 장소": {
-                    "rich_text": [{"type": "text", "text": {"content": ticket.venue}}]
-                },
-                # "상세 링크": {"url": ticket.detail_url},
-
-                "출연진": {
-                    "rich_text": [{"type": "text", "text": {"content": ticket.cast[:2000]}}]
-                },
-                "예매처": {
-                    "multi_select": [{"name": name} for name in ticket.providers]
-                },
-                "단독 판매": {"checkbox": ticket.solo_sale},
-                "출연 배우": {
-                    "relation": [
-                        {"id": self.actor_name_map[name]}
-                        for name in set(
-                            self._extract_names_from_cast(ticket.cast) +
-                            self._extract_names_from_cast(ticket.title)
-                        )
-                        if name in self.actor_name_map
-                    ]
-                },
-                "관련 작품": {
-                    "relation": [
-                        {"id": self.title_name_map[name]}
-                        for name in set(
-                            self._extract_names_from_title(ticket.title)
-                        )
-                        if name in self.title_name_map
-                    ]
-                },
-                "등록 링크": {"url": ticket.ical_url},
-                "지역": {
-                    "select": {"name": ticket.regions}
-                }
+        props = {
+            "공연 제목": {
+                "title": [{"type": "text", "text": {"content": ticket.title}}]
+            },
+            "구분": {
+                "rich_text": [{"type": "text", "text": {"content": ticket.category}}]
+            },
+            "오픈 일시": {
+                "date": {"start": iso_date}
+            },
+            "오픈 회차": {
+                "rich_text": [{"type": "text", "text": {"content": ticket.round_info}}]
+            },
+            "오픈 타입": {
+                "multi_select": [{"name": name} for name in sorted(ticket.open_type_all)]
+            },
+            "공연 장소": {
+                "rich_text": [{"type": "text", "text": {"content": ticket.venue}}]
+            },
+            "출연진": {
+                "rich_text": [{"type": "text", "text": {"content": ticket.cast[:2000]}}]
+            },
+            "예매처": {
+                "multi_select": [{"name": name} for name in sorted(ticket.providers)]
+            },
+            "단독 판매": {"checkbox": ticket.solo_sale},
+            "출연 배우": {
+                "relation": [
+                    {"id": self.actor_name_map[name]}
+                    for name in set(
+                        self._extract_names_from_cast(ticket.cast) +
+                        self._extract_names_from_cast(ticket.title)
+                    )
+                    if name in self.actor_name_map
+                ]
+            },
+            "관련 작품": {
+                "relation": [
+                    {"id": self.title_name_map[name]}
+                    for name in set(
+                        self._extract_names_from_title(ticket.title)
+                    )
+                    if name in self.title_name_map
+                ]
+            },
+            "등록 링크": {"url": ticket.ical_url},
+            "지역": {
+                "select": {"name": ticket.regions}
             }
+        }
+
+        urls = self._ordered_detail_urls(ticket)
+        for idx, url in enumerate(urls):
             key = "상세 링크" if idx == 0 else f"상세 링크{idx + 1}"
             props[key] = {"url": url}
 
-        return props;
+        return props
 
     def _build_contents(self, content: dict, ical_url: str) -> list[dict]:
         """
@@ -163,6 +162,9 @@ class NotionRepository:
                 chunks.append("".join(current))
             return chunks or [""]
 
+        if not isinstance(content, dict):
+            content = {"내용": str(content)} if content else {}
+
         children: list[dict] = []
         for key, value in content.items():
             # 섹션 헤딩
@@ -174,7 +176,7 @@ class NotionRepository:
                 }
             })
             # 본문(2000자 단위로 분할)
-            for chunk in chunk_text(value):
+            for chunk in chunk_text(str(value)):
                 children.append({
                     "object": "block",
                     "type": "paragraph",
@@ -223,7 +225,7 @@ class NotionRepository:
             else:
                 # 생성 시 children 옵션으로 한 번에 삽입
                 created = _notion_call(self.client.pages.create,
-                    parent={"type": "data_source_id", "data_source_id": self._resolve_data_source_id(self.database_id)},
+                    parent=self._page_parent(self.database_id),
                     properties=props,
                     children=contents
                 )
@@ -339,14 +341,13 @@ class NotionRepository:
     def _get_all_pages(self, database_id: str) -> list:
         results = []
         start_cursor = None
-        ds_id = self._resolve_data_source_id(database_id)
 
         while True:
-            params = {"data_source_id": ds_id}
+            params = {}
             if start_cursor:
                 params["start_cursor"] = start_cursor
 
-            response = self.client.data_sources.query(**params)
+            response = self._query_collection(database_id, **params)
             results.extend(response.get("results", []))
 
             if response.get("has_more"):
@@ -356,18 +357,30 @@ class NotionRepository:
 
         return results
 
+    def _query_collection(self, database_id: str, **kwargs) -> dict:
+        if hasattr(self.client, "data_sources"):
+            ds_id = self._resolve_data_source_id(database_id)
+            return self.client.data_sources.query(data_source_id=ds_id, **kwargs)
+        return self.client.databases.query(database_id=database_id, **kwargs)
+
+    def _page_parent(self, database_id: str) -> dict:
+        if hasattr(self.client, "data_sources"):
+            return {"data_source_id": self._resolve_data_source_id(database_id)}
+        return {"database_id": database_id}
+
     def _generate_ics_and_push(self, ticket: TicketInfo) -> str:
         """
         티켓 정보를 기반으로 ICS 파일을 생성하고 github page에 업로드합니다.
         """
-        slug = f"{ticket.title.replace(' ', '_')}_{ticket.open_datetime.strftime('%Y%m%d%H%M')}"
+        slug_title = re.sub(r'[<>:"/\\|?*\x00-\x1f]', "_", ticket.title.replace(" ", "_")).strip("._ ")
+        slug = f"{slug_title}_{ticket.open_datetime.strftime('%Y%m%d%H%M')}"
         file_name = f"{slug}.ics"
         file_path = os.path.join(self.output_dir, file_name)
 
         cal = Calendar()
         event = Event()
         event.name = f"티켓오픈 {ticket.title}"
-        event.begin = ticket.open_datetime.astimezone(settings.user_timezone)
+        event.begin = self._local_open_datetime(ticket)
         event.end = event.begin + timedelta(minutes=30)
         event.location = ticket.venue
         # 출연 배우 이름 추출 (중복 호출 방지)
@@ -396,7 +409,23 @@ class NotionRepository:
         with open(file_path, "w", encoding="utf-8") as f:
             f.write(cal.serialize())
 
-        return f"{self.ical_url}{self.output_dir}/{file_name}"
+        base_url = self.ical_url.rstrip("/")
+        output_dir = self.output_dir.replace("\\", "/").strip("/")
+        return f"{base_url}/{output_dir}/{quote(file_name)}"
+
+    @staticmethod
+    def _ordered_detail_urls(ticket: TicketInfo) -> list[str]:
+        urls = list(ticket.detail_url_all)
+        if ticket.detail_url and ticket.detail_url not in urls:
+            urls.insert(0, ticket.detail_url)
+        return sorted(urls, key=lambda url: (url != ticket.detail_url, url))
+
+    @staticmethod
+    def _local_open_datetime(ticket: TicketInfo):
+        dt = ticket.open_datetime
+        if dt.tzinfo is None or dt.tzinfo.utcoffset(dt) is None:
+            return dt.replace(tzinfo=settings.DEFAULT_TIMEZONE)
+        return dt.astimezone(settings.DEFAULT_TIMEZONE)
 
     def _resolve_data_source_id(self, database_or_data_source_id: str) -> str:
         """
