@@ -110,7 +110,9 @@ class MelonCrawler(AsyncCrawlerBase):
             return []
         title = title_tag.get_text(strip=True).strip()
         round_info, venue, performance_period = self._parse_base_box(soup)
-        round_info = extract_open_round(title, round_info) or "-"
+        # "오픈기간/오픈 회차" 원문에 "N차 티켓오픈" 패턴이 없으면(날짜만 있는 경우 등)
+        # 값을 버리지 않고 원문 그대로 보존한다.
+        round_info = extract_open_round(title, round_info) or round_info or "-"
         only_sale = bool(soup.select_one(cfg['detail_selectors']['solo_icon']))
         content = self._parse_content(soup)
         if not performance_period or performance_period == "-":
@@ -204,12 +206,16 @@ class MelonCrawler(AsyncCrawlerBase):
         place = "-"
         performance_period = "-"
         if base:
-            for tag in base.find_all(['span', 'p', 'div']):
-                txt = tag.get_text(strip=True)
-                if not txt:
-                    continue
-                if "오픈기간" in txt:
-                    round_info = txt.split("오픈기간")[-1].strip(":：· ").strip()
+            lines = [tag.get_text(strip=True) for tag in base.find_all(['span', 'p', 'div'])]
+            lines = [line for line in lines if line]
+            for idx, txt in enumerate(lines):
+                round_label = "오픈기간" if "오픈기간" in txt else ("오픈 회차" if "오픈 회차" in txt else None)
+                if round_label:
+                    value = txt.split(round_label, 1)[-1].strip(":：· ").strip()
+                    if not value and idx + 1 < len(lines):
+                        value = lines[idx + 1].strip(":：· ").strip()
+                    if value:
+                        round_info = value
                 elif "공연 장소" in txt or "공연장소" in txt:
                     place = txt.split(":")[-1].strip()
                 else:

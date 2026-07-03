@@ -87,10 +87,14 @@ class Yes24Crawler(AsyncCrawlerBase):
         soup = BeautifulSoup(html, "html.parser")
         content = self._extract_sections(soup)
         overview = self._pick_first_section(content, "공연 개요", "공연개요", "개요")
+        page_text = soup.get_text("\n", strip=True)
 
         title = self._pick_first_overview_value(overview, "공연 제목", "공연명") or item["title"]
+        # "오픈 회차"/"오픈 기간"/"N차 티켓오픈 기간" 라벨은 공지 본문(공연 개요 밖)에
+        # 있는 경우가 많아 page_text까지 함께 살펴본다.
         round_info = (
-            extract_open_round(item.get("open_type", ""), item.get("raw_title", ""), overview)
+            extract_open_round_period(overview, page_text)
+            or extract_open_round(item.get("open_type", ""), item.get("raw_title", ""), overview)
             or "-"
         )
         performance_period = self._build_performance_period(overview)
@@ -211,7 +215,6 @@ class Yes24Crawler(AsyncCrawlerBase):
         return (
             self._pick_first_overview_value(overview, "공연기간")
             or extract_performance_period(overview)
-            or extract_open_round_period(overview)
             or "-"
         )
 

@@ -194,15 +194,17 @@ class InterParkCrawler(AsyncCrawlerBase):
             or self._parse_perf(page_text, cfg["contents"]["venue"])
             or item.get("venueName", "")
         )
+        # "오픈 회차 :"/"오픈 기간:"/"N차 티켓오픈 기간:" 라벨에 실제 날짜 범위가 적힌 경우,
+        # "마지막/N차 티켓오픈" 같은 일반 회차 라벨보다 이 값을 우선한다.
         round_info = (
-                extract_open_round(item.get("title", ""), perf_info, page_text)
+                extract_open_round_period(perf_info, page_text)
                 or self._parse_perf(perf_info, cfg["contents"]["open_period2"])
                 or self._parse_perf(page_text, cfg["contents"]["open_period2"])
+                or extract_open_round(item.get("title", ""), perf_info, page_text)
                 or "-"
         )
         performance_period = (
                 extract_performance_period(perf_info, page_text)
-                or extract_open_round_period(perf_info, page_text)
                 or "-"
         )
         cast = clean_cast_text(cast_info or "-")

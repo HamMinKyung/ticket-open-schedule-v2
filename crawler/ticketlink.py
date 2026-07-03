@@ -8,7 +8,7 @@ import logging
 from crawler.base import AsyncCrawlerBase
 from models.ticket import TicketInfo
 from utils.config import settings
-from utils.utils import clean_cast_text, extract_cast_from_lines, extract_open_round, normalize_title, resolve_region
+from utils.utils import clean_cast_text, extract_cast_from_lines, extract_open_round, extract_open_round_period, normalize_title, resolve_region
 
 logger = logging.getLogger(__name__)
 
@@ -102,7 +102,7 @@ class TicketLinkCrawler(AsyncCrawlerBase):
         body_soup = BeautifulSoup(content_html, "html.parser")
         body_text = body_soup.get_text("\n", strip=True)
         period = self._pick_performance_period(body_text) or "-"
-        open_round = extract_open_round(title_text, body_text) or "-"
+        open_round = extract_open_round_period(body_text) or extract_open_round(title_text, body_text) or "-"
 
         reserveWebUrl = notice.get("reserveWebUrl") or item.get("reserveWebUrl") or ""
         open_type = "일반예매" if reserveWebUrl  else "티켓오픈"

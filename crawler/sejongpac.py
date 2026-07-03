@@ -142,32 +142,29 @@ class SejongPac(AsyncCrawlerBase):
 
                 date_str = m.group(1)
 
-                if "오전" in date_str or "오후" in date_str:
-                    # 🧠 오전/오후 있는 경우는 직접 파싱
-                    d = re.search(
-                        r'(?P<year>\d{4})년\s*(?P<month>\d{1,2})월\s*(?P<day>\d{1,2})일\s*'
-                        r'(?P<ampm>오전|오후)?\s*(?P<hour>\d{1,2})(시|:)(\s*(?P<minute>\d{1,2})분?)?',
-                        date_str
-                    )
-                    if d:
-                        year = int(d.group("year"))
-                        month = int(d.group("month"))
-                        day = int(d.group("day"))
-                        hour = int(d.group("hour"))
-                        minute = int(d.group("minute") or 0)
-                        ampm = d.group("ampm")
+                # 오전/오후 유무와 무관하게, "시"만 있고 분이 없는 경우(예: "14시")까지
+                # 처리하기 위해 정규식으로 직접 파싱한다. strptime("%H:%M")은 이 경우 실패한다.
+                d = re.search(
+                    r'(?P<year>\d{4})년\s*(?P<month>\d{1,2})월\s*(?P<day>\d{1,2})일\s*'
+                    r'(?P<ampm>오전|오후)?\s*(?P<hour>\d{1,2})(시|:)(\s*(?P<minute>\d{1,2})분?)?',
+                    date_str
+                )
+                if not d:
+                    continue  # 예외 처리: 파싱 실패 시 skip
 
-                        if ampm == "오후" and hour < 12:
-                            hour += 12
-                        if ampm == "오전" and hour == 12:
-                            hour = 0
+                year = int(d.group("year"))
+                month = int(d.group("month"))
+                day = int(d.group("day"))
+                hour = int(d.group("hour"))
+                minute = int(d.group("minute") or 0)
+                ampm = d.group("ampm")
 
-                        open_time = datetime(year, month, day, hour, minute)
-                    else:
-                        continue  # 예외 처리: 파싱 실패 시 skip
-                else:
-                    # ✅ 오전/오후 없는 경우는 그대로 파싱
-                    open_time = datetime.strptime(date_str, "%Y년 %m월 %d일 %H:%M")
+                if ampm == "오후" and hour < 12:
+                    hour += 12
+                if ampm == "오전" and hour == 12:
+                    hour = 0
+
+                open_time = datetime(year, month, day, hour, minute)
 
                 # 날짜 뒤에 붙은 텍스트를 잘라내고, 없으면 "일반예매"로
                 open_target = nds[m.end():].strip()
@@ -246,7 +243,7 @@ class SejongPac(AsyncCrawlerBase):
             tickets.append(TicketInfo(
                 title=title,  # 공연 제목
                 open_datetime=open_dt,  # 오픈 일시
-                round_info=extract_open_round(open_item["target"], title) or round_label_from_raw or "-",  # 오픈 회차
+                round_info=extract_open_round(open_item["target"], title) or round_label_from_raw or round_raw or "-",  # 오픈 회차
                 performance_period=(
                     performance_period
                     or extract_performance_period(*content.values())

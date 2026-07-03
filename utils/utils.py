@@ -221,7 +221,7 @@ def extract_performance_period(*values: str) -> str | None:
             if any(word in compact for word in ("티켓오픈", "티켓오픈일", "오픈일시", "예매일시")):
                 continue
             match = re.search(
-                r"(?:^|[-–—•·ㆍ]\s*)공연기간\s*[:：\-–—·ㆍ]?\s*(.+)$",
+                r"(?:^|[-–—•·ㆍ]\s*)공연\s*(?:기간|일시)\s*[:：\-–—·ㆍ]?\s*(.+)$",
                 line,
                 re.I,
             )
@@ -233,10 +233,10 @@ def extract_performance_period(*values: str) -> str | None:
 
 
 def extract_open_round_period(*values: str) -> str | None:
-    """"N차 티켓오픈 공연기간" 처럼 특정 회차에 연결된 공연 기간을 추출한다.
+    """"오픈 회차", "오픈기간", "N차 티켓오픈 기간"처럼 오픈(회차)에 붙은 값을 추출한다.
 
-    extract_performance_period()는 "티켓오픈"이 포함된 줄을 의도적으로 건너뛰므로,
-    회차별 오픈 공지에 섞여 나오는 공연 기간은 이 함수로 별도 처리한다.
+    공연 자체의 일정("공연기간"/"공연일시")은 extract_performance_period()가
+    담당하므로 여기서는 다루지 않는다.
     """
     for value in values:
         if not value:
@@ -247,32 +247,25 @@ def extract_open_round_period(*values: str) -> str | None:
             if not line:
                 continue
             normalized = re.sub(r"\s+", " ", line)
-            if "티켓오픈" not in normalized and "티켓 오픈" not in normalized:
-                continue
-            if (
-                "공연기간" not in normalized
-                and "공연 기간" not in normalized
-                and "오픈기간" not in normalized
-                and "오픈 기간" not in normalized
-            ):
-                continue
 
-            # 예: "3차 티켓오픈 공연기간: 2026년 8월 11일(화) ~ 8월 30일(일)"
+            # 예: "오픈 회차 : ...", "오픈기간: ...", "3차 티켓오픈 기간: ...",
+            #     "마지막 티켓 오픈 기간: ...", "4차 오픈기간: ..."
+            # "오픈일시"/"예매일시"(단순 오픈 시각)는 "회차"/"기간"이 아니므로 매칭되지 않는다.
             match = re.search(
-                r"티켓\s*오픈\s*(?:공연\s*)?기간\s*[:：]?\s*(.+)$",
+                r"(?:\d+\s*차\s*)?(?:마지막|앵콜)?\s*(?:티켓\s*)?오픈\s*(?:공연\s*)?(?:회차|기간)\s*[:：]?\s*(.*)$",
                 normalized,
                 flags=re.I,
             )
-            if match:
-                period = re.sub(r"\s*공연\s*$", "", match.group(1).strip())
-                if period:
-                    return period
+            if not match:
+                continue
 
-            # 예: "2차 티켓오픈 공연 기간" 다음 줄에 "8월 25일(화) ~ 9월 17일(목) 공연"
+            value_part = re.sub(r"\s*공연\s*$", "", match.group(1).strip())
+            if value_part:
+                return value_part
+
+            # 값이 다음 줄에 있는 경우
             if idx + 1 < len(lines):
                 next_line = re.sub(r"\s+", " ", lines[idx + 1]).strip()
                 if next_line:
-                    period = re.sub(r"\s*공연\s*$", "", next_line)
-                    if period:
-                        return period
+                    return re.sub(r"\s*공연\s*$", "", next_line)
     return None

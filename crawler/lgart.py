@@ -67,8 +67,8 @@ class LGArtCrawler(AsyncCrawlerBase):
             logger.debug(f"[LGArtCrawler] 지역 필터 제외: title={title!r}, venue={venue!r}")
             return []
 
-        performance_period = extract_performance_period(text) or extract_open_round_period(text) or "-"
-        round_info = extract_open_round(raw_title, text) or "-"
+        performance_period = extract_performance_period(text) or "-"
+        round_info = extract_open_round_period(text) or extract_open_round(raw_title, text) or "-"
         cast = self._extract_cast(text)
         detail_url = item["detail_url"]
 
