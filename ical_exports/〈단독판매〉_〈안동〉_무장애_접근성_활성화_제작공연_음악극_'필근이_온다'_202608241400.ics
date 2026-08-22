@@ -8,11 +8,11 @@ ACTION:DISPLAY
 DESCRIPTION:Reminder
 END:VALARM
 CATEGORIES:티켓오픈
-DESCRIPTION:티켓링크\, 놀티켓 
+DESCRIPTION:티켓링크 
 DTEND:20260824T053000Z
-LOCATION:NOL 유니플렉스 1관
+LOCATION:안산문화예술의전당 백조홀
 DTSTART:20260824T050000Z
-SUMMARY:티켓오픈 뮤지컬 〈미드나잇 : 앤틀러스〉 프리뷰
-UID:3e05b543-98db-4b6f-96ea-ce3ab4634c4d@3e05.org
+SUMMARY:티켓오픈 〈단독판매〉 〈안동〉 무장애 접근성 활성화 제작공연 음악극 '필근이 온다'
+UID:1c675f99-fde0-4275-8e71-73bb25776ad2@1c67.org
 END:VEVENT
 END:VCALENDAR
