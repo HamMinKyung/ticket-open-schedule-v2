@@ -142,30 +142,75 @@ UNSUPPORTED_REGION_KEYWORDS = (
     "춘천", "원주", "강릉", "서귀포", "음성",
 )
 REGION_PATTERNS = {
-    "경기": r"(경기|수원|용인|성남|안산|의왕|안양|평촌|고양|파주|부천|하남|과천|광명|평택|군포|서울랜드)",
-    "부산": r"(부산|Busan|사직실내체육관)",
-    "울산": r"(울산|HD아트센터|울산북구문화예술회관)",
-    "서울": r"(서울|Seoul|예스24라이브홀|예스24스테이지|예스24아트원|스카이아트홀|구름아래소극장|장충체육관|KBS아레나|예술의전당|홍익대 대학로|대학로|세종문화회관)",
+    "경기": r"(경기도|경기(?!장)|수원|용인|성남|안산|의왕|안양|평촌|고양|파주|부천|하남|과천|광명|평택|군포|의정부|양주|동두천|구리|남양주|오산|시흥|이천|안성|김포|포천|여주|가평|양평|연천)",
+    "부산": r"(부산|\bBusan\b)",
+    "울산": r"(울산|\bUlsan\b)",
+    "서울": r"(서울(?!랜드)|\bSeoul\b)",
+}
+VENUE_REGION_PATTERNS = {
+    "경기": r"서울랜드",
+    "부산": r"사직실내체육관",
+    "울산": r"HD아트센터|울산북구문화예술회관",
+    "서울": r"예스24라이브홀|예스24스테이지|예스24아트원|스카이아트홀|구름아래소극장|장충체육관|KBS아레나|예술의전당|홍익대 대학로|대학로|세종문화회관",
 }
 
 
-def resolve_region(*values: str, default_region: str = "서울") -> str | None:
-    corpus = " ".join(str(value or "") for value in values)
-
-    # "세종"은 세종특별자치시(비수도권) 지역명이지만, "세종문화회관"은 서울 소재 공연장이라
-    # 단순 부분 문자열 매칭 시 오검출되므로 제외 처리한다.
-    unsupported_terms = [
-        rf"{re.escape(kw)}(?!문화회관)" if kw == "세종" else re.escape(kw)
+def _location_region(text: str, default_region: str = "") -> tuple[bool, str | None]:
+    """판별 불가와 명시적인 제외 지역을 구분한다."""
+    text = re.sub(r"\s+", " ", text or "").strip()
+    if not text:
+        return False, None
+    # NOL은 이 공연장을 서울로 분류하기도 하므로 실제 소재지를 우선한다.
+    if re.search(r"인스파이어\s*아레나|\bINSPIRE\s*ARENA\b", text, re.I):
+        return True, None
+    # 경기도 광주시와 광주광역시를 구분한다.
+    if re.search(r"광주광역시", text):
+        return True, None
+    if "광주" in text and ("경기" in text or default_region == "경기"):
+        text = text.replace("광주", "")
+        if not re.search("경기", text):
+            text = "경기도 " + text
+    unsupported = "|".join(
+        r"세종(?!문화회관|대학교|대왕)" if kw == "세종" else re.escape(kw)
         for kw in UNSUPPORTED_REGION_KEYWORDS
-    ]
-    unsupported_pattern = r"(?:%s)" % "|".join(unsupported_terms)
-    if re.search(unsupported_pattern, corpus, re.I):
-        return None
-
+    )
+    if re.search(unsupported, text, re.I):
+        return True, None
     for region, pattern in REGION_PATTERNS.items():
-        if re.search(pattern, corpus, re.I):
+        if re.search(pattern, text, re.I):
+            return True, region
+    return False, None
+
+
+def resolve_region(
+    venue: str = "", title: str = "", address: str = "", *, default_region: str = ""
+) -> str | None:
+    """주소 → 공연장 지역 → 제목의 지역 표기 → 공연장 별칭 → 제공 지역 순으로 판별."""
+    for value in (address, venue):
+        matched, region = _location_region(value, default_region)
+        if matched:
             return region
 
+    # 작품명이나 출연자 이름에 포함된 지명은 지역 근거로 사용하지 않는다.
+    labels = re.findall(r"[\[［(（]([^\]］)）]+)[\]］)）]", title or "")
+    labels += re.findall(r"\s[-–—]\s*([^–—]+)$|\bin\s+([A-Za-z]+)\s*$", title or "", re.I)
+    for label in labels:
+        if isinstance(label, tuple):
+            label = next((part for part in label if part), "")
+        # '서울의 별', '음성' 같은 작품 제목을 지명으로 부분 매칭하지 않는다.
+        label = label.strip()
+        region_label = re.sub(r"(?:공연|앵콜|콘서트)\s*$", "", label).strip()
+        tokens = set(SUPPORTED_REGIONS) | set(UNSUPPORTED_REGION_KEYWORDS)
+        tokens.update({"Seoul", "Busan", "Ulsan", "SEOUL", "BUSAN", "ULSAN"})
+        tokens.update({"의정부", "수원", "용인", "성남", "고양", "부천", "하남", "안양", "평택", "군포"})
+        if region_label in tokens:
+            matched, region = _location_region(region_label, default_region)
+            if matched:
+                return region
+
+    for region, pattern in VENUE_REGION_PATTERNS.items():
+        if re.search(pattern, venue or "", re.I):
+            return region
     return default_region if default_region in SUPPORTED_REGIONS else None
 
 

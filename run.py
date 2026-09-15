@@ -9,7 +9,7 @@ import logging.config
 import yaml
 from typing import Tuple
 
-from crawler.interpark import InterParkCrawler
+from crawler.nol import NolCrawler
 from crawler.lgart import LGArtCrawler
 from crawler.melon import MelonCrawler
 from crawler.sac import SacCrawler
@@ -43,7 +43,7 @@ async def main():
     dr = calc_date_range()
     logger.info(f"크롤링 기간: {dr[0]} ~ {dr[1]}")
     crawlers = [
-        InterParkCrawler(dr), MelonCrawler(dr), SejongPac(dr), SacCrawler(dr), TicketLinkCrawler(dr), Yes24Crawler(dr),
+        NolCrawler(dr), MelonCrawler(dr), SejongPac(dr), SacCrawler(dr), TicketLinkCrawler(dr), Yes24Crawler(dr),
         LGArtCrawler(dr)
     ]
 

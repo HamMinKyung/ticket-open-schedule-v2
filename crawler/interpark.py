@@ -301,6 +301,7 @@ class InterParkCrawler(AsyncCrawlerBase):
                 return entries
 
         # ticketDates 구조가 아니라도 openName/openDateStr 조합이 그대로 박혀 있는 경우를 처리한다.
+        entries: List[tuple[str, datetime]] = []
         fallback_patterns = [
             r'"openName"\s*:\s*"(?P<name>[^"]+)"\s*,\s*"openDateStr"\s*:\s*"(?P<date>[^"]+)"',
             r'"openDateStr"\s*:\s*"(?P<date>[^"]+)"\s*,\s*"openName"\s*:\s*"(?P<name>[^"]+)"',

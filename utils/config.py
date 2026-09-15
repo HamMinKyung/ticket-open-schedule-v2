@@ -22,6 +22,10 @@ class Settings(BaseSettings):
 
     # 크롤러별 설정 일원 관리
     CRAWLERS: Dict[str, Any] = {
+        'nol': {
+            'base_url': 'https://nol.yanolja.com',
+            'list_endpoint': '/ticket/display/api/upcoming',
+        },
         'inter_park': {
             'base_url': 'https://tickets.interpark.com',
             'regions': ['SEOUL', 'GYEONGGI', 'BUSAN', 'ULSAN'],

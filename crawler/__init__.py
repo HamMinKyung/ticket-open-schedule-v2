@@ -1,5 +1,6 @@
 # crawler/__init__.py
 from .interpark import InterParkCrawler
+from .nol import NolCrawler
 from .lgart import LGArtCrawler
 from .melon import MelonCrawler
 from .ticketlink import TicketLinkCrawler
@@ -9,6 +10,7 @@ from .yes24 import Yes24Crawler
 
 __all__ = [
     "InterParkCrawler",
+    "NolCrawler",
     "LGArtCrawler",
     "MelonCrawler",
     "TicketLinkCrawler",
