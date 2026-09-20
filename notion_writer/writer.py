@@ -11,8 +11,6 @@ logger = logging.getLogger(__name__)
 
 from ics.grammar.parse import ContentLine
 from notion_client import Client
-from notion_client.client import ClientOptions
-from dataclasses import fields
 from notion_client.errors import APIResponseError, HTTPResponseError, RequestTimeoutError
 from utils.config import settings
 from models.ticket import TicketInfo
@@ -86,11 +84,10 @@ class NotionRepository:
             client: Optional[Client] = None,
             database_id: Optional[str] = None
     ):
-        # 자동 재시도가 있는 SDK는 retry=False로 끕니다. 구버전에는 이 옵션이 없습니다.
-        client_options = {"auth": settings.NOTION_TOKEN}
-        if "retry" in {field.name for field in fields(ClientOptions)}:
-            client_options["retry"] = False
-        self.client = client if client is not None else Client(**client_options)
+        # SDK 재시도는 끄고 공통 게이트에서 모든 요청의 속도와 재시도를 관리합니다.
+        self.client = client if client is not None else Client(
+            auth=settings.NOTION_TOKEN, retry=False, notion_version="2025-09-03"
+        )
         self.database_id = database_id or settings.NOTION_DB_ID
         self.actor_db_id = settings.NOTION_ACT_DB_ID
         self.title_db_id = settings.NOTION_TITLE_DB_ID
@@ -530,15 +527,11 @@ class NotionRepository:
         return results
 
     def _query_collection(self, database_id: str, **kwargs) -> dict:
-        if hasattr(self.client, "data_sources"):
-            ds_id = self._resolve_data_source_id(database_id)
-            return _notion_call(self.client.data_sources.query, data_source_id=ds_id, **kwargs)
-        return _notion_call(self.client.databases.query, database_id=database_id, **kwargs)
+        ds_id = self._resolve_data_source_id(database_id)
+        return _notion_call(self.client.data_sources.query, data_source_id=ds_id, **kwargs)
 
     def _page_parent(self, database_id: str) -> dict:
-        if hasattr(self.client, "data_sources"):
-            return {"data_source_id": self._resolve_data_source_id(database_id)}
-        return {"database_id": database_id}
+        return {"data_source_id": self._resolve_data_source_id(database_id)}
 
     def _generate_ics_and_push(self, ticket: TicketInfo) -> str:
         """

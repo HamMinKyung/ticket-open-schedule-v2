@@ -1,28 +1,21 @@
 import unittest
-import inspect
 import tempfile
-from dataclasses import fields
+import json
 from unittest.mock import Mock, patch
 from concurrent.futures import ThreadPoolExecutor
+from contextlib import closing
 
 import httpx
+from notion_client import Client
 from notion_client.errors import APIResponseError
-from notion_client.client import ClientOptions
 
 from notion_writer.writer import NotionRepository, _NotionRequestGate, _notion_call
 
 
 def api_error(code, status, headers=None):
-    # notion-client 3.x changed the exception constructor used by 2.x.
-    if "response" not in inspect.signature(APIResponseError).parameters:
-        return APIResponseError(
-            status=status, message=code, code=code,
-            headers=httpx.Headers(headers), raw_body_text="",
-        )
     return APIResponseError(
-        response=httpx.Response(status, headers=headers, request=httpx.Request("GET", "https://api.notion.com")),
-        message=code,
-        code=code,
+        status=status, message=code, code=code,
+        headers=httpx.Headers(headers), raw_body_text="",
     )
 
 
@@ -38,7 +31,34 @@ class FakeClock:
 
 
 class ClientInitializationTests(unittest.TestCase):
-    def test_real_client_initializes_and_disables_sdk_retries_when_supported(self):
+    def test_sdk_queries_and_creates_pages_using_resolved_data_source(self):
+        requests = []
+
+        def respond(request):
+            requests.append(request)
+            self.assertEqual(request.headers["Notion-Version"], "2025-09-03")
+            if request.url.path == "/v1/databases/database":
+                return httpx.Response(200, json={"id": "database", "data_sources": [{"id": "source"}]})
+            if request.url.path == "/v1/data_sources/source/query":
+                return httpx.Response(200, json={"results": [], "has_more": False})
+            if request.url.path == "/v1/pages":
+                return httpx.Response(200, json={"id": "new-page"})
+            self.fail(f"Unexpected request: {request.method} {request.url.path}")
+
+        with closing(Client(auth="test", retry=False, notion_version="2025-09-03", client=httpx.Client(
+            transport=httpx.MockTransport(respond)
+        ))) as client:
+            repo = NotionRepository.__new__(NotionRepository)
+            repo.client = client
+            repo._data_source_ids = {}
+            with patch("notion_writer.writer._NOTION_GATE", _NotionRequestGate(interval=0)):
+                repo._query_collection("database", page_size=100)
+                _notion_call(client.pages.create, parent=repo._page_parent("database"), properties={})
+        self.assertEqual(len(requests), 3)
+        self.assertEqual(json.loads(requests[1].content), {"page_size": 100})
+        self.assertEqual(json.loads(requests[2].content)["parent"], {"data_source_id": "source"})
+
+    def test_real_client_initializes_and_disables_sdk_retries(self):
         with tempfile.TemporaryDirectory() as directory, patch(
             "notion_writer.writer.settings.GB_ICAL_DIR", directory
         ), patch.object(NotionRepository, "_load_actor_name_map", return_value={}), patch.object(
@@ -46,8 +66,8 @@ class ClientInitializationTests(unittest.TestCase):
         ):
             repo = NotionRepository()
             self.addCleanup(repo.client.close)
-            if "retry" in {field.name for field in fields(ClientOptions)}:
-                self.assertIs(repo.client.options.retry, False)
+            self.assertIs(repo.client.options.retry, False)
+            self.assertEqual(repo.client.options.notion_version, "2025-09-03")
 
             # SDK 전체 경로에서 429가 공통 게이트까지 전달되는지 검증합니다.
             clock = FakeClock()
