@@ -10,9 +10,9 @@ END:VALARM
 CATEGORIES:티켓오픈
 DESCRIPTION:놀티켓 
 DTEND:20260921T023000Z
-LOCATION:큐브컨벤션센터 CCC스테이지
+LOCATION:서울문화예술교육센터 서초\, 서울체임버홀
 DTSTART:20260921T020000Z
-SUMMARY:티켓오픈 조영남 전국투어 콘서트 : 조영남 음악회 〈자화상〉 - 서울
-UID:dc3b4636-22e4-46ca-b005-92a0d5e267ec@dc3b.org
+SUMMARY:티켓오픈 The Recite - 낭독이 있는 연주회 : 일요일의 예술가
+UID:4f9049a2-513b-4684-b972-ee0f7860eb65@4f90.org
 END:VEVENT
 END:VCALENDAR
