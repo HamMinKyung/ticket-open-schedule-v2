@@ -1,5 +1,6 @@
 import sys
 import io
+import os
 
 sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding='utf-8', errors='ignore')
 
@@ -70,6 +71,13 @@ async def main():
 
     repo = NotionRepository()
     await repo.write_all(merged)
+
+    melon_locked = any(isinstance(crawler, MelonCrawler) and crawler.locked for crawler in crawlers)
+    if melon_locked:
+        logger.warning("멜론 423 차단 감지: 다른 예매처 저장 완료, 워크플로우 후속 재실행 필요")
+    if output_path := os.environ.get("GITHUB_OUTPUT"):
+        with open(output_path, "a", encoding="utf-8") as output:
+            output.write(f"melon_locked={str(melon_locked).lower()}\n")
 
 
 if __name__ == "__main__":

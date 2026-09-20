@@ -5,9 +5,25 @@ on:
     - cron: '0 23 * * 2,6'  # 매주 일(토 UTC 23:00), 수(화 UTC 23:00) KST 08:00
   workflow_dispatch:
 
+concurrency:
+  group: notion-ticket-schedule
+  cancel-in-progress: false
+  queue: max
+
 jobs:
   run-ticket-scraper:
     runs-on: ubuntu-22.04
+    timeout-minutes: 120
+
+    env:
+      NOTION_TOKEN: ${{ secrets.NOTION_TOKEN }}
+      NOTION_PAGE_ID: ${{ secrets.NOTION_PAGE_ID }}
+      NOTION_DB_ID: ${{ secrets.NOTION_DB_ID }}
+      NOTION_ACT_DB_ID: ${{ secrets.NOTION_ACT_DB_ID }}
+      NOTION_TITLE_DB_ID: ${{ secrets.NOTION_TITLE_DB_ID }}
+      GB_ICAL_URL: ${{ secrets.GB_ICAL_URL }}
+      CHROME_BIN: /usr/bin/google-chrome
+      TZ: Asia/Seoul
 
     permissions:
       contents: write
@@ -36,15 +52,16 @@ jobs:
           pip install -r requirements.txt
 
       - name: Run Weekly Ticket Scraper
-        env:
-          NOTION_TOKEN: ${{ secrets.NOTION_TOKEN }}
-          NOTION_PAGE_ID: ${{ secrets.NOTION_PAGE_ID }}
-          NOTION_DB_ID: ${{ secrets.NOTION_DB_ID }}
-          NOTION_ACT_DB_ID: ${{ secrets.NOTION_ACT_DB_ID }}
-          NOTION_TITLE_DB_ID: ${{ secrets.NOTION_TITLE_DB_ID }}
-          GB_ICAL_URL : ${{ secrets.GB_ICAL_URL }}
-          CHROME_BIN: /usr/bin/google-chrome
-          TZ: Asia/Seoul
+        id: scrape
+        run: python run.py
+
+      - name: Wait one hour after Melon lock
+        if: steps.scrape.outputs.melon_locked == 'true'
+        run: sleep 3600
+
+      - name: Retry ticket collection once
+        id: retry
+        if: steps.scrape.outputs.melon_locked == 'true'
         run: python run.py
 
       - name: Prepare for pushing .ics files to main branch
@@ -70,3 +87,9 @@ jobs:
       - name: Cleanup
         run: |
           git worktree remove temp-main --force
+
+      - name: Report persistent Melon lock
+        if: steps.retry.outputs.melon_locked == 'true'
+        run: |
+          echo "::error::Melon is still locked after the one-hour retry. Other providers were saved. No further retries in this run."
+          exit 1

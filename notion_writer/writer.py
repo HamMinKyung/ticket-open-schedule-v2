@@ -2,34 +2,76 @@
 import asyncio
 import logging
 import time
+import threading
+import random
+import math
 from typing import Optional, List
 
 logger = logging.getLogger(__name__)
 
 from ics.grammar.parse import ContentLine
 from notion_client import Client
-from notion_client.errors import APIResponseError, RequestTimeoutError
+from notion_client.errors import APIResponseError, HTTPResponseError, RequestTimeoutError
 from utils.config import settings
 from models.ticket import TicketInfo
 from ics import Calendar, Event
 import re
 import os
-from datetime import timedelta
+from datetime import datetime, timedelta, timezone
+from zoneinfo import ZoneInfo
 import glob
 from urllib.parse import quote
 
 
+class _NotionRequestGate:
+    """프로세스 내 모든 Notion 요청과 재시도의 속도를 함께 제한합니다."""
+
+    def __init__(self, interval: float = 0.5):
+        self.interval = interval
+        self.next_request_at = 0.0
+        self.lock = threading.Lock()
+
+    def call(self, fn, *args, retries: int = 3, **kwargs):
+        if retries < 1:
+            raise ValueError("retries must be at least 1")
+        # 응답과 재시도까지 직렬화하여 429 대기 중 다른 작업의 요청도 멈춥니다.
+        with self.lock:
+            for attempt in range(retries):
+                wait = self.next_request_at - time.monotonic()
+                if wait > 0:
+                    time.sleep(wait)
+                self.next_request_at = time.monotonic() + self.interval
+                try:
+                    return fn(*args, **kwargs)
+                except HTTPResponseError as exc:
+                    if exc.status not in (429, 529):
+                        raise
+                    try:
+                        retry_after = float(exc.headers.get("Retry-After", "0"))
+                        if not math.isfinite(retry_after) or retry_after < 0:
+                            retry_after = 0.0
+                    except (TypeError, ValueError):
+                        retry_after = 0.0
+                    wait = max(retry_after, 2 ** attempt) + random.uniform(0, 0.25)
+                    self.next_request_at = max(self.next_request_at, time.monotonic() + wait)
+                    if attempt == retries - 1:
+                        raise
+                    logger.warning("Notion API %s - 전체 요청 %.2f초 대기 후 재시도 (%s/%s)",
+                                   exc.status, wait, attempt + 1, retries - 1)
+                except RequestTimeoutError:
+                    if attempt == retries - 1:
+                        raise
+                    wait = 2 ** attempt
+                    self.next_request_at = max(self.next_request_at, time.monotonic() + wait)
+                    logger.warning("Notion API 타임아웃 - %s초 후 재시도 (%s/%s)",
+                                   wait, attempt + 1, retries - 1)
+
+
+_NOTION_GATE = _NotionRequestGate()
+
+
 def _notion_call(fn, *args, retries: int = 3, **kwargs):
-    """RequestTimeoutError 발생 시 지수 백오프로 재시도"""
-    for attempt in range(retries):
-        try:
-            return fn(*args, **kwargs)
-        except RequestTimeoutError:
-            if attempt == retries - 1:
-                raise
-            wait = 2 ** attempt
-            logger.warning(f"Notion API 타임아웃 - {wait}초 후 재시도 ({attempt + 1}/{retries})")
-            time.sleep(wait)
+    return _NOTION_GATE.call(fn, *args, retries=retries, **kwargs)
 
 
 class NotionRepository:
@@ -42,11 +84,13 @@ class NotionRepository:
             client: Optional[Client] = None,
             database_id: Optional[str] = None
     ):
-        self.client = client or Client(auth=settings.NOTION_TOKEN)  # log_level=logging.DEBUG
+        # 재시도는 공통 게이트에서 수행하여 SDK의 별도 재시도와 중복되지 않게 합니다.
+        self.client = client or Client(auth=settings.NOTION_TOKEN, max_retries=0)
         self.database_id = database_id or settings.NOTION_DB_ID
         self.actor_db_id = settings.NOTION_ACT_DB_ID
         self.title_db_id = settings.NOTION_TITLE_DB_ID
         self._data_source_ids: dict[str, str] = {}
+        self._page_index = None
         self.actor_name_map = self._load_actor_name_map()
         self.title_name_map = self._load_title_name_map()
         self.output_dir = settings.GB_ICAL_DIR
@@ -58,6 +102,8 @@ class NotionRepository:
         """
         동일 제목 및 오픈일시의 페이지가 이미 존재하는지 조회합니다.
         """
+        if self._page_index is not None:
+            return self._page_index.get(self._ticket_key(ticket))
         local_dt = self._local_open_datetime(ticket)
         iso_date = local_dt.isoformat(timespec="seconds")
         response = self._query_collection(
@@ -75,6 +121,130 @@ class NotionRepository:
         # else:
         #     print(f"✅ 페이지 존재: {ticket.title} (page_id={results[0]['id']})")
         return results[0] if results else None
+
+    @staticmethod
+    def _date_value(value, time_zone=None):
+        if not value:
+            return None
+        dt = datetime.fromisoformat(value.replace("Z", "+00:00"))
+        if dt.tzinfo is None:
+            dt = dt.replace(tzinfo=ZoneInfo(time_zone) if time_zone else settings.DEFAULT_TIMEZONE)
+        return dt.astimezone(timezone.utc).isoformat()
+
+    @staticmethod
+    def _text_value(parts):
+        return "".join(part.get("text", {}).get("content", part.get("plain_text", "")) for part in parts)
+
+    def _ticket_key(self, ticket):
+        return ticket.title, self._date_value(self._local_open_datetime(ticket).isoformat(timespec="seconds"))
+
+    def _load_ticket_index(self, tickets):
+        dates = [self._local_open_datetime(ticket).replace(microsecond=0) for ticket in tickets]
+        pages = self._get_all_pages(self.database_id, filter={"and": [
+            {"property": "오픈 일시", "date": {"on_or_after": min(dates).isoformat()}},
+            {"property": "오픈 일시", "date": {"on_or_before": max(dates).isoformat()}},
+        ]})
+        index = {}
+        for page in pages:
+            props = page.get("properties", {})
+            date = props.get("오픈 일시", {}).get("date")
+            if date and date.get("start"):
+                key = (self._text_value(props.get("공연 제목", {}).get("title", [])),
+                       self._date_value(date["start"], date.get("time_zone")))
+                index.setdefault(key, page)
+        logger.info("기존 티켓 일괄 조회 완료: %s건", len(pages))
+        return index
+
+    def _property_value(self, prop, kind):
+        value = prop.get(kind)
+        if kind in ("title", "rich_text"):
+            return self._text_value(value or [])
+        if kind == "multi_select":
+            return sorted(item["name"] for item in (value or []))
+        if kind == "relation":
+            return sorted(item["id"].replace("-", "").lower() for item in (value or []))
+        if kind == "select":
+            return value.get("name") if value else None
+        if kind == "date":
+            if not value:
+                return None
+            return tuple(self._date_value(value.get(key), value.get("time_zone")) for key in ("start", "end"))
+        return value
+
+    def _changed_properties(self, page, desired):
+        existing = page.get("properties", {})
+        changes = {}
+        for name, prop in desired.items():
+            kind = next(iter(prop))
+            current = existing.get(name, {})
+            if kind == "relation" and current.get("has_more"):
+                relations = []
+                cursor = None
+                while True:
+                    params = {"page_id": page["id"], "property_id": current["id"], "page_size": 100}
+                    if cursor:
+                        params["start_cursor"] = cursor
+                    response = _notion_call(self.client.pages.properties.retrieve, **params)
+                    relations.extend(item["relation"] for item in response["results"])
+                    if not response.get("has_more"):
+                        break
+                    cursor = self._next_cursor(response, cursor)
+                current = {"relation": relations}
+            if self._property_value(current, kind) != self._property_value(prop, kind):
+                changes[name] = prop
+        return changes
+
+    @staticmethod
+    def _block_value(block):
+        kind = block["type"]
+        content = block.get(kind, {})
+        # API가 추가하는 ID, 작성 시각, plain_text 등은 비교에서 제외합니다.
+        return (kind, NotionRepository._text_value(content.get("rich_text", [])),
+                content.get("color", "default"))
+
+    @staticmethod
+    def _next_cursor(response, current):
+        cursor = response.get("next_cursor")
+        if not cursor or cursor == current:
+            raise RuntimeError("Notion pagination did not advance")
+        return cursor
+
+    def _get_all_blocks(self, page_id):
+        blocks, cursor = [], None
+        while True:
+            params = {"block_id": page_id, "page_size": 100}
+            if cursor:
+                params["start_cursor"] = cursor
+            response = _notion_call(self.client.blocks.children.list, **params)
+            blocks.extend(response.get("results", []))
+            if not response.get("has_more"):
+                return blocks
+            cursor = self._next_cursor(response, cursor)
+
+    def _append_blocks(self, page_id, blocks):
+        for offset in range(0, len(blocks), 100):
+            _notion_call(self.client.blocks.children.append,
+                         block_id=page_id, children=blocks[offset:offset + 100])
+
+    def _sync_blocks(self, page_id, desired):
+        existing = self._get_all_blocks(page_id)
+        changed = False
+        shared = 0
+        for old, new in zip(existing, desired):
+            if old["type"] != new["type"]:
+                break
+            if self._block_value(old) != self._block_value(new):
+                _notion_call(self.client.blocks.update, block_id=old["id"], **{new["type"]: new[new["type"]]})
+                changed = True
+            shared += 1
+        # 타입이나 길이가 바뀐 경우에만 나머지 구간을 교체합니다.
+        for old in existing[shared:]:
+            _notion_call(self.client.blocks.delete, block_id=old["id"])
+            changed = True
+        if desired[shared:]:
+            self._append_blocks(page_id, desired[shared:])
+            changed = True
+        return changed
 
     def _build_properties(self, ticket: TicketInfo) -> dict:
         """
@@ -202,38 +372,27 @@ class NotionRepository:
 
             if existing:
                 page_id = existing["id"]
-                # 1) 속성 업데이트
-                _notion_call(self.client.pages.update, page_id=page_id, properties=props)
-
-                # 2) 기존 블록 전부 삭제
-                cursor = None
-                while True:
-                    if cursor:
-                        resp = _notion_call(self.client.blocks.children.list,
-                            block_id=page_id, start_cursor=cursor, page_size=100)
-                    else:
-                        resp = _notion_call(self.client.blocks.children.list,
-                            block_id=page_id, page_size=100)
-
-                    for block in resp.get("results", []):
-                        _notion_call(self.client.blocks.delete, block_id=block["id"])
-                    if not resp.get("has_more"):
-                        break
-                    cursor = resp.get("next_cursor")
-
-                # 3) 새 블록 추가
-                _notion_call(self.client.blocks.children.append,
-                    block_id=page_id, children=contents)
-                logger.info(f"🔁 업데이트 및 블록 교체 완료: {ticket.title} (page_id={page_id})")
+                changes = self._changed_properties(existing, props)
+                if changes:
+                    _notion_call(self.client.pages.update, page_id=page_id, properties=changes)
+                    existing["properties"].update(changes)
+                body_changed = self._sync_blocks(page_id, contents)
+                if changes or body_changed:
+                    logger.info("🔁 변경 부분만 갱신: %s (page_id=%s)", ticket.title, page_id)
+                else:
+                    logger.info("변경 없음, 쓰기 생략: %s (page_id=%s)", ticket.title, page_id)
 
             else:
                 # 생성 시 children 옵션으로 한 번에 삽입
                 created = _notion_call(self.client.pages.create,
                     parent=self._page_parent(self.database_id),
                     properties=props,
-                    children=contents
+                    children=contents[:100]
                 )
                 page_id = created["id"]
+                if self._page_index is not None:
+                    self._page_index[self._ticket_key(ticket)] = {"id": page_id, "properties": props}
+                self._append_blocks(page_id, contents[100:])
                 logger.info(f"🆕 생성 및 블록 삽입 완료: {ticket.title} (page_id={page_id})")
 
         except Exception as ex:
@@ -281,19 +440,16 @@ class NotionRepository:
         return matched_names
 
     async def write_all(self, tickets: List[TicketInfo]) -> None:
-        # Notion API 레이트리밋 방지를 위해 동시 처리 개수를 제한한다.
-        semaphore = asyncio.Semaphore(3)
-
-        async def limited_upsert(ticket: TicketInfo):
-            async with semaphore:
-                return await asyncio.to_thread(self.upsert_ticket, ticket)
-
-        task = [limited_upsert(ticket) for ticket in tickets]
-
-        results = await asyncio.gather(*task, return_exceptions=True)
-        for ticket, result in zip(tickets, results):
-            if isinstance(result, Exception):
-                logging.error(f"❌ 티켓 처리 실패: {ticket.title}", exc_info=result)
+        if not tickets:
+            return
+        # 조회 실패 시 신규 티켓으로 오인하여 중복 생성하지 않도록 쓰기 전에 완료합니다.
+        self._page_index = await asyncio.to_thread(self._load_ticket_index, tickets)
+        try:
+            # API는 어차피 직렬화됩니다. 동일 키의 중복 입력도 생성된 페이지를 재사용합니다.
+            for ticket in tickets:
+                await asyncio.to_thread(self.upsert_ticket, ticket)
+        finally:
+            self._page_index = None
 
         ics_files = glob.glob(f"{self.output_dir}/*.ics")
         logger.info(f"📁 {self.output_dir} 내 .ics 파일 수: {len(ics_files)}개")
@@ -338,7 +494,10 @@ class NotionRepository:
                 properties["관련 작품"] = {"relation": matched_title_ids}
 
             try:
-                self.client.pages.update(
+                properties = self._changed_properties(page, properties)
+                if not properties:
+                    continue
+                _notion_call(self.client.pages.update,
                     page_id=page_id,
                     properties=properties
                 )
@@ -346,12 +505,12 @@ class NotionRepository:
             except Exception as ex:
                 logger.error(f"❌ 갱신 실패: {title_str}", exc_info=ex)
 
-    def _get_all_pages(self, database_id: str) -> list:
+    def _get_all_pages(self, database_id: str, **query_params) -> list:
         results = []
         start_cursor = None
 
         while True:
-            params = {}
+            params = {**query_params, "page_size": 100}
             if start_cursor:
                 params["start_cursor"] = start_cursor
 
@@ -359,7 +518,7 @@ class NotionRepository:
             results.extend(response.get("results", []))
 
             if response.get("has_more"):
-                start_cursor = response.get("next_cursor")
+                start_cursor = self._next_cursor(response, start_cursor)
             else:
                 break
 
@@ -368,8 +527,8 @@ class NotionRepository:
     def _query_collection(self, database_id: str, **kwargs) -> dict:
         if hasattr(self.client, "data_sources"):
             ds_id = self._resolve_data_source_id(database_id)
-            return self.client.data_sources.query(data_source_id=ds_id, **kwargs)
-        return self.client.databases.query(database_id=database_id, **kwargs)
+            return _notion_call(self.client.data_sources.query, data_source_id=ds_id, **kwargs)
+        return _notion_call(self.client.databases.query, database_id=database_id, **kwargs)
 
     def _page_parent(self, database_id: str) -> dict:
         if hasattr(self.client, "data_sources"):
@@ -444,11 +603,11 @@ class NotionRepository:
             return self._data_source_ids[database_or_data_source_id]
 
         try:
-            db = self.client.databases.retrieve(database_id=database_or_data_source_id)
+            db = _notion_call(self.client.databases.retrieve, database_id=database_or_data_source_id)
         except APIResponseError as exc:
             if exc.code != "object_not_found":
                 raise
-            self.client.data_sources.retrieve(data_source_id=database_or_data_source_id)
+            _notion_call(self.client.data_sources.retrieve, data_source_id=database_or_data_source_id)
             data_source_id = database_or_data_source_id
         else:
             # 단일 소스 가정: 첫 번째 data_source를 사용

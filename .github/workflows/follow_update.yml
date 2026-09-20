@@ -3,6 +3,11 @@ name: RUN Follow Ticket Actor
 on:
   workflow_dispatch:
 
+concurrency:
+  group: notion-ticket-schedule
+  cancel-in-progress: false
+  queue: max
+
 jobs:
   run-ticket-scraper:
     runs-on: ubuntu-22.04  # 더 안정적으로
@@ -34,6 +39,7 @@ jobs:
           NOTION_DB_ID: ${{ secrets.NOTION_DB_ID }}
           NOTION_ACT_DB_ID: ${{ secrets.NOTION_ACT_DB_ID }}
           NOTION_TITLE_DB_ID: ${{ secrets.NOTION_TITLE_DB_ID }}
+          GB_ICAL_URL: ${{ secrets.GB_ICAL_URL }}
           CHROME_BIN: /usr/bin/google-chrome  # ✅ 안정성 추가
           TZ: Asia/Seoul  # 타임존 설정
         run: python follow_run.py

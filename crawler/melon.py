@@ -21,6 +21,7 @@ class MelonCrawler(AsyncCrawlerBase):
         super().__init__(date_range)
         self.cfg = settings.CRAWLERS['melon']
         self.list_url = self.cfg['list_endpoint']
+        self.locked = False
 
     def _get_headers(self) -> Dict[str, str]:
         # 설정된 리스트에서 랜덤 추출
@@ -31,6 +32,7 @@ class MelonCrawler(AsyncCrawlerBase):
         }
 
     async def _fetch_list(self, session: aiohttp.ClientSession) -> List[Dict[str, Any]]:
+        self.locked = False
         items: List[Dict[str, Any]] = []
         # 장르 코드별·페이지별 리스트 수집
         for code, genre_name in self.cfg['genre_map'].items():
@@ -42,19 +44,16 @@ class MelonCrawler(AsyncCrawlerBase):
                 }
                 await asyncio.sleep(random.uniform(1.0, 3.0))
                 headers = self._get_headers()
-                for attempt in range(3):
-                    async with session.post(self.list_url, headers=headers, data=payload) as resp:
-                        if resp.status == 423:
-                            wait = 10 * (attempt + 1)
-                            logger.warning(f"[MelonCrawler] 423 Locked - {wait}초 후 재시도 ({attempt + 1}/3)")
-                            await asyncio.sleep(wait)
-                            continue
-                        resp.raise_for_status()
-                        html = await resp.text()
-                        break
-                else:
-                    logger.error(f"[MelonCrawler] 423 Locked 재시도 초과: genre={genre_name}, page={page}")
-                    continue
+                async with session.post(self.list_url, headers=headers, data=payload) as resp:
+                    if resp.status == 423:
+                        self.locked = True
+                        logger.warning(
+                            "[MelonCrawler] 423 Locked - 멜론 수집 중단, 추후 실행에서 재시도: genre=%s, page=%s",
+                            genre_name, page,
+                        )
+                        return []
+                    resp.raise_for_status()
+                    html = await resp.text()
                 soup = BeautifulSoup(html, 'html.parser')
 
                 for li in soup.select("ul.list_ticket_cont li"):
