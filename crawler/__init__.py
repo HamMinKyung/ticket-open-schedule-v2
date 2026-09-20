@@ -7,6 +7,7 @@ from .ticketlink import TicketLinkCrawler
 from .sac import SacCrawler
 from .sejongpac import SejongPac
 from .yes24 import Yes24Crawler
+from .caci import CaciCrawler
 
 __all__ = [
     "InterParkCrawler",
@@ -17,4 +18,5 @@ __all__ = [
     "SacCrawler",
     "SejongPac",
     "Yes24Crawler",
+    "CaciCrawler",
 ]

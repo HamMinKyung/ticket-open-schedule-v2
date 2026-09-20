@@ -148,10 +148,16 @@ class Settings(BaseSettings):
         },
         'lg_art': {
             'base_url': "https://www.lgart.com",
-            'list_endpoint': "/community/ko/notice?q=M2M3ODcyOWFjYjQ5NDdiN2E4YTBmOWMzN2VlZDAwYWU%3d",
+            # 티켓 분류의 1페이지만 조회합니다.
+            'list_endpoint': "/community/ko/notice?q=NGQxNGFjNjZhMjE2NDYzODg1MGJiNzUwZDlhOGFiNjE%3d",
             "headers": {
                 "User-Agent": USER_AGENT,
             },
+        },
+        'caci': {
+            'base_url': 'https://www.caci.or.kr',
+            'list_url': 'https://www.caci.or.kr/community/notice?q=MWEwOTU5OTE5ZjNiNGEwOTk2ZWJjOWJhYTc4OTRkY2U%3d',
+            'headers': {'User-Agent': USER_AGENT},
         }
     }
 
