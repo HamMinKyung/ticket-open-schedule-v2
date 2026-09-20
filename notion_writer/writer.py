@@ -8,7 +8,7 @@ logger = logging.getLogger(__name__)
 
 from ics.grammar.parse import ContentLine
 from notion_client import Client
-from notion_client.errors import RequestTimeoutError
+from notion_client.errors import APIResponseError, RequestTimeoutError
 from utils.config import settings
 from models.ticket import TicketInfo
 from ics import Calendar, Event
@@ -46,6 +46,7 @@ class NotionRepository:
         self.database_id = database_id or settings.NOTION_DB_ID
         self.actor_db_id = settings.NOTION_ACT_DB_ID
         self.title_db_id = settings.NOTION_TITLE_DB_ID
+        self._data_source_ids: dict[str, str] = {}
         self.actor_name_map = self._load_actor_name_map()
         self.title_name_map = self._load_title_name_map()
         self.output_dir = settings.GB_ICAL_DIR
@@ -436,17 +437,25 @@ class NotionRepository:
 
     def _resolve_data_source_id(self, database_or_data_source_id: str) -> str:
         """
-        DB ID를 받으면 그 아래 단일 data source의 ID를 찾아 반환.
-        이미 data_source_id를 준 경우에도 그대로 동작하도록 시도-예외 방식 사용.
+        설정의 DB ID를 먼저 조회하고, 성공한 ID 변환은 재사용합니다.
+        DB가 없을 때만 직접 지정된 data source ID인지 확인합니다.
         """
+        if database_or_data_source_id in self._data_source_ids:
+            return self._data_source_ids[database_or_data_source_id]
+
         try:
-            # 이미 data source일 가능성
-            self.client.data_sources.retrieve(data_source_id=database_or_data_source_id)
-            return database_or_data_source_id
-        except Exception:
             db = self.client.databases.retrieve(database_id=database_or_data_source_id)
+        except APIResponseError as exc:
+            if exc.code != "object_not_found":
+                raise
+            self.client.data_sources.retrieve(data_source_id=database_or_data_source_id)
+            data_source_id = database_or_data_source_id
+        else:
             # 단일 소스 가정: 첫 번째 data_source를 사용
             data_sources = db.get("data_sources", [])
             if not data_sources:
                 raise RuntimeError("Database has no data_sources; share/permissions or structure issue.")
-            return data_sources[0]["id"]
+            data_source_id = data_sources[0]["id"]
+
+        self._data_source_ids[database_or_data_source_id] = data_source_id
+        return data_source_id
