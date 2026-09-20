@@ -8,11 +8,11 @@ ACTION:DISPLAY
 DESCRIPTION:Reminder
 END:VALARM
 CATEGORIES:티켓오픈
-DESCRIPTION:세종문화회관\, 멜론티켓\, 티켓링크 
+DESCRIPTION:세종문화회관\, 티켓링크 
 DTEND:20260922T053000Z
-LOCATION:세종문화회관 M씨어터
+LOCATION:월\, 수\, 목 7시 30분 / 금 3시\, 7시 30분 / 토\, 일 3시 (화 공연 없음)
 DTSTART:20260922T050000Z
 SUMMARY:티켓오픈 서울시극단 연극 〈에너미 〉
-UID:fde850dc-e104-4499-a06d-ca5a9d6cb2bd@fde8.org
+UID:b602864e-1f53-4b49-8f7a-33fb6c0635d8@b602.org
 END:VEVENT
 END:VCALENDAR
