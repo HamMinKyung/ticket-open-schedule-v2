@@ -11,6 +11,8 @@ logger = logging.getLogger(__name__)
 
 from ics.grammar.parse import ContentLine
 from notion_client import Client
+from notion_client.client import ClientOptions
+from dataclasses import fields
 from notion_client.errors import APIResponseError, HTTPResponseError, RequestTimeoutError
 from utils.config import settings
 from models.ticket import TicketInfo
@@ -84,8 +86,11 @@ class NotionRepository:
             client: Optional[Client] = None,
             database_id: Optional[str] = None
     ):
-        # 재시도는 공통 게이트에서 수행하여 SDK의 별도 재시도와 중복되지 않게 합니다.
-        self.client = client or Client(auth=settings.NOTION_TOKEN, max_retries=0)
+        # 자동 재시도가 있는 SDK는 retry=False로 끕니다. 구버전에는 이 옵션이 없습니다.
+        client_options = {"auth": settings.NOTION_TOKEN}
+        if "retry" in {field.name for field in fields(ClientOptions)}:
+            client_options["retry"] = False
+        self.client = client if client is not None else Client(**client_options)
         self.database_id = database_id or settings.NOTION_DB_ID
         self.actor_db_id = settings.NOTION_ACT_DB_ID
         self.title_db_id = settings.NOTION_TITLE_DB_ID

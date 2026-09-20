@@ -1,12 +1,15 @@
 import unittest
 import inspect
+import tempfile
+from dataclasses import fields
 from unittest.mock import Mock, patch
 from concurrent.futures import ThreadPoolExecutor
 
 import httpx
 from notion_client.errors import APIResponseError
+from notion_client.client import ClientOptions
 
-from notion_writer.writer import NotionRepository, _NotionRequestGate
+from notion_writer.writer import NotionRepository, _NotionRequestGate, _notion_call
 
 
 def api_error(code, status, headers=None):
@@ -32,6 +35,41 @@ class FakeClock:
 
     def sleep(self, seconds):
         self.now += seconds
+
+
+class ClientInitializationTests(unittest.TestCase):
+    def test_real_client_initializes_and_disables_sdk_retries_when_supported(self):
+        with tempfile.TemporaryDirectory() as directory, patch(
+            "notion_writer.writer.settings.GB_ICAL_DIR", directory
+        ), patch.object(NotionRepository, "_load_actor_name_map", return_value={}), patch.object(
+            NotionRepository, "_load_title_name_map", return_value={}
+        ):
+            repo = NotionRepository()
+            self.addCleanup(repo.client.close)
+            if "retry" in {field.name for field in fields(ClientOptions)}:
+                self.assertIs(repo.client.options.retry, False)
+
+            # SDK 전체 경로에서 429가 공통 게이트까지 전달되는지 검증합니다.
+            clock = FakeClock()
+            starts = []
+
+            def respond(request):
+                starts.append(clock.now)
+                if len(starts) == 1:
+                    return httpx.Response(429, headers={"Retry-After": "7"}, json={
+                        "object": "error", "status": 429, "code": "rate_limited", "message": "test limit",
+                    })
+                return httpx.Response(200, json={"object": "database", "id": "test-database"})
+
+            repo.client.client = httpx.Client(transport=httpx.MockTransport(respond))
+            with patch("notion_writer.writer._NOTION_GATE", _NotionRequestGate()), patch(
+                "notion_writer.writer.time.monotonic", clock.monotonic
+            ), patch("notion_writer.writer.time.sleep", clock.sleep), patch(
+                "notion_writer.writer.random.uniform", return_value=0
+            ):
+                result = _notion_call(repo.client.databases.retrieve, database_id="test-database")
+            self.assertEqual(result["id"], "test-database")
+            self.assertEqual(starts, [100, 107])
 
 
 class NotionGateTests(unittest.TestCase):
