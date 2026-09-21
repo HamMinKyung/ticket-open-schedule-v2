@@ -20,6 +20,8 @@ import os
 from datetime import datetime, timedelta, timezone
 from zoneinfo import ZoneInfo
 import glob
+import hashlib
+from utils.location import location_key
 from urllib.parse import quote
 
 
@@ -102,13 +104,13 @@ class NotionRepository:
 
     def _find_page(self, ticket: TicketInfo) -> Optional[dict]:
         """
-        동일 제목 및 오픈일시의 페이지가 이미 존재하는지 조회합니다.
+        동일 제목·오픈일시·지역·공연장의 페이지를 조회합니다.
         """
         if self._page_index is not None:
             return self._page_index.get(self._ticket_key(ticket))
         local_dt = self._local_open_datetime(ticket)
         iso_date = local_dt.isoformat(timespec="seconds")
-        response = self._query_collection(
+        results = self._get_all_pages(
             self.database_id,
             filter={
                 "and": [
@@ -117,12 +119,11 @@ class NotionRepository:
                 ]
             }
         )
-        results = response.get("results", [])
         # if not results:
         #     print(f"❌ 페이지 없음: {ticket.title} (오픈일시={ticket.open_datetime})")
         # else:
         #     print(f"✅ 페이지 존재: {ticket.title} (page_id={results[0]['id']})")
-        return results[0] if results else None
+        return next((page for page in results if self._page_location(page) == location_key(ticket.regions, ticket.venue)), None)
 
     @staticmethod
     def _date_value(value, time_zone=None):
@@ -138,7 +139,13 @@ class NotionRepository:
         return "".join(part.get("text", {}).get("content", part.get("plain_text", "")) for part in parts)
 
     def _ticket_key(self, ticket):
-        return ticket.title, self._date_value(self._local_open_datetime(ticket).isoformat(timespec="seconds"))
+        return (ticket.title, self._date_value(self._local_open_datetime(ticket).isoformat(timespec="seconds")),
+                location_key(ticket.regions, ticket.venue))
+
+    def _page_location(self, page):
+        props = page.get("properties", {})
+        return location_key((props.get("지역", {}).get("select") or {}).get("name", ""),
+                            self._text_value(props.get("공연 장소", {}).get("rich_text", [])))
 
     def _load_ticket_index(self, tickets):
         dates = [self._local_open_datetime(ticket).replace(microsecond=0) for ticket in tickets]
@@ -152,7 +159,7 @@ class NotionRepository:
             date = props.get("오픈 일시", {}).get("date")
             if date and date.get("start"):
                 key = (self._text_value(props.get("공연 제목", {}).get("title", [])),
-                       self._date_value(date["start"], date.get("time_zone")))
+                       self._date_value(date["start"], date.get("time_zone")), self._page_location(page))
                 index.setdefault(key, page)
         logger.info("기존 티켓 일괄 조회 완료: %s건", len(pages))
         return index
@@ -310,9 +317,9 @@ class NotionRepository:
         }
 
         urls = self._ordered_detail_urls(ticket)
-        for idx, url in enumerate(urls):
+        for idx in range(3):
             key = "상세 링크" if idx == 0 else f"상세 링크{idx + 1}"
-            props[key] = {"url": url}
+            props[key] = {"url": urls[idx] if idx < len(urls) else None}
 
         return props
 
@@ -379,7 +386,8 @@ class NotionRepository:
                     _notion_call(self.client.pages.update, page_id=page_id, properties=changes)
                     existing["properties"].update(changes)
                 body_changed = self._sync_blocks(page_id, contents)
-                if changes or body_changed:
+                comments_changed = self._append_overflow_comments(page_id, ticket)
+                if changes or body_changed or comments_changed:
                     logger.info("🔁 변경 부분만 갱신: %s (page_id=%s)", ticket.title, page_id)
                 else:
                     logger.info("변경 없음, 쓰기 생략: %s (page_id=%s)", ticket.title, page_id)
@@ -395,6 +403,7 @@ class NotionRepository:
                 if self._page_index is not None:
                     self._page_index[self._ticket_key(ticket)] = {"id": page_id, "properties": props}
                 self._append_blocks(page_id, contents[100:])
+                self._append_overflow_comments(page_id, ticket)
                 logger.info(f"🆕 생성 및 블록 삽입 완료: {ticket.title} (page_id={page_id})")
 
         except Exception as ex:
@@ -539,6 +548,8 @@ class NotionRepository:
         """
         slug_title = re.sub(r'[<>:"/\\|?*\x00-\x1f]', "_", ticket.title.replace(" ", "_")).strip("._ ")
         slug = f"{slug_title}_{ticket.open_datetime.strftime('%Y%m%d%H%M')}"
+        location = "\0".join(location_key(ticket.regions, ticket.venue))
+        slug += "_" + hashlib.sha256(location.encode("utf-8")).hexdigest()[:12]
         file_name = f"{slug}.ics"
         file_path = os.path.join(self.output_dir, file_name)
 
@@ -578,10 +589,42 @@ class NotionRepository:
         output_dir = self.output_dir.replace("\\", "/").strip("/")
         return f"{base_url}/{output_dir}/{quote(file_name)}"
 
+    def _append_overflow_comments(self, page_id: str, ticket: TicketInfo) -> bool:
+        urls = self._ordered_detail_urls(ticket)[3:]
+        if not urls:
+            return False
+        marker = "추가 상세 링크 (자동 등록)\n"
+        known = set()
+        cursor = None
+        while True:
+            params = {"block_id": page_id, "page_size": 100}
+            if cursor:
+                params["start_cursor"] = cursor
+            response = _notion_call(self.client.comments.list, **params)
+            for comment in response.get("results", []):
+                parts = comment.get("rich_text", [])
+                if self._text_value(parts).startswith(marker):
+                    known.update(part.get("text", {}).get("link", {}).get("url")
+                                 for part in parts if part.get("text", {}).get("link"))
+            if not response.get("has_more"):
+                break
+            cursor = self._next_cursor(response, cursor)
+        missing = [url for url in urls if url not in known]
+        # One heading and up to 49 links + line breaks stay below 100 rich-text objects.
+        for offset in range(0, len(missing), 49):
+            rich_text = [{"type": "text", "text": {"content": marker}}]
+            for url in missing[offset:offset + 49]:
+                rich_text.extend([
+                    {"type": "text", "text": {"content": url, "link": {"url": url}}},
+                    {"type": "text", "text": {"content": "\n"}},
+                ])
+            _notion_call(self.client.comments.create, parent={"page_id": page_id}, rich_text=rich_text)
+        return bool(missing)
+
     @staticmethod
     def _ordered_detail_urls(ticket: TicketInfo) -> list[str]:
-        urls = list(ticket.detail_url_all)
-        if ticket.detail_url and ticket.detail_url not in urls:
+        urls = [url for url in ticket.detail_url_all if url and url != "-"]
+        if ticket.detail_url and ticket.detail_url != "-" and ticket.detail_url not in urls:
             urls.insert(0, ticket.detail_url)
         return sorted(urls, key=lambda url: (url != ticket.detail_url, url))
 

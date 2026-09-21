@@ -213,7 +213,7 @@ class Yes24Crawler(AsyncCrawlerBase):
 
     def _build_performance_period(self, overview: str) -> str:
         return (
-            self._pick_first_overview_value(overview, "공연기간")
+            self._pick_first_overview_value(overview, "공연기간", "공연일시", "일시")
             or extract_performance_period(overview)
             or "-"
         )
@@ -224,6 +224,17 @@ class Yes24Crawler(AsyncCrawlerBase):
             cast = extract_cast_from_lines(text.splitlines())
             if cast != "-":
                 return cast
+        # 별도 캐스팅 표 없이 소개 문장에 '역의 이름'으로 기재된 경우.
+        names = []
+        for text in content.values():
+            for sentence in re.split(r"[.!?\n]", text):
+                if "출연" not in sentence:
+                    continue
+                for name in re.findall(r"역(?:의|에)\s+([가-힣]{2,5}?)(?=과\s|와\s|이\s|가\s|은\s|는\s|[,，]|\s|$)", sentence):
+                    if name not in names:
+                        names.append(name)
+        if names:
+            return ", ".join(names)
         return None
 
     @staticmethod
@@ -231,6 +242,8 @@ class Yes24Crawler(AsyncCrawlerBase):
         for link in soup.select(".noti-vt-btns a[href]"):
             href = link.get("href", "")
             match = re.search(r"/Perf/(\d+)", href)
+            if not match:
+                match = re.search(r"\bjsf_base_GetSiteDetailURL\(\s*['\"]?(\d+)['\"]?\s*\)", href)
             if match:
                 return f"https://ticket.yes24.com/Perf/{match.group(1)}"
         return None

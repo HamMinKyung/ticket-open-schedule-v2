@@ -65,6 +65,27 @@ class NolTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(ticket.providers, {"놀티켓"})
         self.assertTrue(ticket.solo_sale)
 
+    async def test_body_presale_is_separate_from_general_sale(self):
+        item = notice(ticket_dates=[
+            {"ticket_open_date": "2026-09-22T12:00:00", "ticket_open_type_name": "일반 예매"},
+        ], goods_info=("아티스트 선예매: 2026년 9월 21일 (월) 오후 12시 ~ 오후 3시<br>"
+                       "일반 예매: 2026년 9월 22일 (화) 오후 12시 ~"))
+        tickets = await self.crawler._fetch_detail(None, item)
+        self.assertEqual(len(tickets), 2)
+        general, presale = tickets
+        self.assertEqual(general.round_info, "-")
+        self.assertEqual(presale.open_type, "아티스트 선예매")
+        self.assertEqual(presale.open_datetime, datetime(2026, 9, 21, 12))
+        self.assertEqual(presale.round_info, "선예매")
+        self.crawler.start = datetime(2026, 9, 22)
+        self.assertEqual(len(self.crawler._schedules(item)), 1)
+
+    async def test_body_only_presale_keeps_notice_in_list(self):
+        item = notice(ticket_dates=[], goods_info="아티스트 선예매: 2026년 9월 21일 (월) 오전 12시 ~ 오후 3시")
+        items = await self.crawler._fetch_list(Session([{'notices': [item], 'summary': {}}]))
+        self.assertEqual(len(items), 1)
+        self.assertEqual(self.crawler._schedules(item)[0][1], datetime(2026, 9, 21))
+
     async def test_multiple_dates_filter_invalid_and_duplicate_entries(self):
         dates = [
             {"ticket_open_date": "2026-09-15T05:00:00Z", "ticket_other_open_name": "팬클럽 선예매"},

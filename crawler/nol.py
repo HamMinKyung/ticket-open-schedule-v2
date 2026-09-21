@@ -1,6 +1,7 @@
 """NOL 티켓의 오픈 예정 API를 사용하는 크롤러."""
 
 import logging
+import re
 from datetime import datetime
 from typing import Any, Dict, List
 from urllib.parse import quote
@@ -59,6 +60,32 @@ class NolCrawler(AsyncCrawlerBase):
             if key not in seen:
                 schedules.append(key)
                 seen.add(key)
+        # API에 빠진 선예매가 공지 본문에만 기재되는 경우도 있다.
+        for field in ("goods_info", "goods_introduce"):
+            text = self._text(item.get(field))
+            pattern = (
+                r"(?:^|\n)\s*[-•·]?\s*(?P<name>[^\n:：]*?(?:선\s*예매|일반\s*예매))\s*[:：]\s*"
+                r"(?P<year>\d{4})년\s*(?P<month>\d{1,2})월\s*(?P<day>\d{1,2})일\s*"
+                r"(?:\([^)]*\)\s*)?(?P<ampm>오전|오후)?\s*(?P<hour>\d{1,2})"
+                r"(?:시(?:\s*(?P<minute>\d{1,2})분)?|:(?P<colon_minute>\d{2}))"
+            )
+            for match in re.finditer(pattern, text):
+                hour = int(match['hour'])
+                if match['ampm']:
+                    if not 1 <= hour <= 12:
+                        continue
+                    hour = hour % 12 + (12 if match['ampm'] == '오후' else 0)
+                try:
+                    dt = datetime(int(match['year']), int(match['month']), int(match['day']),
+                                  hour, int(match['minute'] or match['colon_minute'] or 0))
+                except ValueError:
+                    continue
+                name = match['name'].strip()
+                # 띄어쓰기가 다른 동일 예매 유형은 API 일정을 유지한다.
+                key = (re.sub(r'\s+', '', name), dt)
+                existing = {(re.sub(r'\s+', '', label), when) for label, when in schedules}
+                if self.start <= dt <= self.end and key not in existing:
+                    schedules.append((name, dt))
         return schedules
 
     async def _fetch_list(self, session) -> List[Dict[str, Any]]:
@@ -120,7 +147,7 @@ class NolCrawler(AsyncCrawlerBase):
         perf_info = content["공연정보"]
         round_info = (
             extract_open_round_period(perf_info, content["공연소개"])
-            or extract_open_round(item.get("open_name") or "", title, perf_info)
+            or extract_open_round(item.get("open_name") or "", title)
             or "-"
         )
         period = extract_performance_period(perf_info)
@@ -134,7 +161,7 @@ class NolCrawler(AsyncCrawlerBase):
                 title=normalize_title(title),
                 open_datetime=dt,
                 open_type=name,
-                round_info=round_info,
+                round_info=round_info if round_info != "-" else (extract_open_round(name) or "-"),
                 performance_period=period or "-",
                 cast=clean_cast_text(content["캐스팅"] or "-"),
                 detail_url=f"{self.cfg['base_url']}/ticket/products/{quote(goods_code, safe='')}",

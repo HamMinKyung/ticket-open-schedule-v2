@@ -227,6 +227,13 @@ class SejongPac(AsyncCrawlerBase):
                 if "세종문화티켓에서만" in line:
                     solo_sale = True
 
+        # 공지 자체가 공연시간을 '공연장소'로 잘못 표기하기도 한다.
+        # 상세 공연장을 확인할 수 없으면 기관명으로 보완하고 시간은 본문에 보존한다.
+        if venue and re.search(r"\d{1,2}\s*(?:시|:\d{2})", venue) and not re.search(r"극장|홀|회관|공연장", venue):
+            content["공연시간"] = venue
+            venue = None
+        venue = venue or "세종문화회관"
+
         # (4) 출연진
         intro_section = soup.find('th', string='공연소개')
         if intro_section:

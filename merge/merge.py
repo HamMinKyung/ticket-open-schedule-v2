@@ -1,9 +1,9 @@
-from collections import defaultdict
-from datetime import datetime
-from typing import List, OrderedDict, Tuple
+from collections import OrderedDict
+from typing import List
 
 from models.ticket import TicketInfo
 from utils.utils import extract_open_round, normalize_title, normalize_title_for_merge
+from utils.location import location_key
 
 
 def _title_score(title: str) -> tuple[int, int, int]:
@@ -23,7 +23,7 @@ def _text_score(value: str) -> tuple[int, int]:
 
 
 def merge_ticket_sources(tickets: List[TicketInfo]) -> List[TicketInfo]:
-    merged: "OrderedDict[Tuple[str, datetime], TicketInfo]" = OrderedDict()
+    merged = OrderedDict()
     for tk in tickets:
         # 1) source를 providers에 포함
         tk.providers.add(tk.source)
@@ -34,7 +34,7 @@ def merge_ticket_sources(tickets: List[TicketInfo]) -> List[TicketInfo]:
         normalized_title = normalize_title(tk.title)
         merge_title = normalize_title_for_merge(normalized_title)
         tk.title = normalized_title
-        key = (merge_title, tk.open_datetime.strftime("%Y-%m-%d %H:%M"))
+        key = (merge_title, tk.open_datetime.strftime("%Y-%m-%d %H:%M"), location_key(tk.regions, tk.venue))
 
         if key in merged:
             # 이미 있으면 providers만 합친다
@@ -59,12 +59,14 @@ def merge_ticket_sources(tickets: List[TicketInfo]) -> List[TicketInfo]:
 
     # 같은 공연이지만 오픈 회차(오픈 일시)가 달라 별도 항목으로 남은 경우,
     # 회차 중 한 곳에서라도 출연진 정보를 찾았다면 나머지 빈 항목에도 채워준다.
-    best_cast_by_title: dict[str, str] = {}
-    for (merge_title, _), tk in merged.items():
-        if _text_score(tk.cast) > _text_score(best_cast_by_title.get(merge_title, "-")):
-            best_cast_by_title[merge_title] = tk.cast
-    for (merge_title, _), tk in merged.items():
-        if tk.cast == "-" and best_cast_by_title.get(merge_title, "-") != "-":
-            tk.cast = best_cast_by_title[merge_title]
+    best_cast_by_title = {}
+    for (merge_title, _, location), tk in merged.items():
+        cast_key = (merge_title, location)
+        if _text_score(tk.cast) > _text_score(best_cast_by_title.get(cast_key, "-")):
+            best_cast_by_title[cast_key] = tk.cast
+    for (merge_title, _, location), tk in merged.items():
+        cast_key = (merge_title, location)
+        if tk.cast == "-" and best_cast_by_title.get(cast_key, "-") != "-":
+            tk.cast = best_cast_by_title[cast_key]
 
     return list(merged.values())

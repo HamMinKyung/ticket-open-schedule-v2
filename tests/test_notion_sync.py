@@ -26,6 +26,7 @@ class NotionSyncTests(unittest.IsolatedAsyncioTestCase):
         self.repo._page_parent = Mock(return_value={"data_source_id": "source"})
         self.repo._query_collection = Mock()
         self.repo.client.blocks.children.list.return_value = {"results": [], "has_more": False}
+        self.repo.client.comments.list.return_value = {"results": [], "has_more": False}
         self.ticket = TicketInfo(
             title="테스트 공연", open_datetime=datetime(2026, 9, 21, 14),
             source="멜론티켓", providers={"멜론티켓", "NOL"},
@@ -80,10 +81,10 @@ class NotionSyncTests(unittest.IsolatedAsyncioTestCase):
 
     async def test_only_changed_property_is_updated(self):
         self.set_existing()
-        self.ticket.venue = "새 공연장"
+        self.ticket.cast = "새 출연진"
         await self.repo.write_all([self.ticket])
         self.repo.client.pages.update.assert_called_once_with(
-            page_id="page", properties={"공연 장소": {"rich_text": [{"type": "text", "text": {"content": "새 공연장"}}]}}
+            page_id="page", properties={"출연진": {"rich_text": [{"type": "text", "text": {"content": "새 출연진"}}]}}
         )
         self.repo.client.blocks.update.assert_not_called()
         self.repo.client.blocks.delete.assert_not_called()
@@ -140,6 +141,85 @@ class NotionSyncTests(unittest.IsolatedAsyncioTestCase):
         await self.repo.write_all([])
         self.repo._query_collection.assert_not_called()
         self.assert_no_writes()
+
+    async def test_same_title_and_time_in_different_venues_create_separate_pages(self):
+        other = self.ticket.model_copy(update={"venue": "다른 공연장"})
+        self.set_existing()
+        self.repo.client.pages.create.return_value = {"id": "other-page"}
+        await self.repo.write_all([self.ticket, other])
+        self.repo.client.pages.create.assert_called_once()
+        self.repo.client.pages.update.assert_not_called()
+
+    async def test_existing_pages_match_their_own_venues(self):
+        other = self.ticket.model_copy(update={"venue": "다른 공연장"})
+        self.repo._query_collection.return_value = {"results": [self.page(), self.page(other, 'other')], "has_more": False}
+        self.repo.client.blocks.children.list.return_value = {"results": self.blocks(), "has_more": False}
+        await self.repo.write_all([self.ticket, other])
+        self.assert_no_writes()
+
+    def test_direct_lookup_checks_venue(self):
+        self.set_existing()
+        other = self.ticket.model_copy(update={"venue": "다른 공연장"})
+        self.assertIsNone(self.repo._find_page(other))
+        self.assertEqual(self.repo._find_page(self.ticket)['id'], 'page')
+
+    def test_calendar_files_are_distinct_for_different_venues(self):
+        other = self.ticket.model_copy(update={"venue": "다른 공연장"})
+        self.repo.ical_url = 'https://example.com'
+        one = NotionRepository._generate_ics_and_push(self.repo, self.ticket)
+        two = NotionRepository._generate_ics_and_push(self.repo, other)
+        self.assertNotEqual(one, two)
+
+    def overflow_ticket(self, count=5):
+        self.ticket.detail_url = 'https://example.com/0'
+        self.ticket.detail_url_all = {f'https://example.com/{n}' for n in range(count)}
+        return self.ticket
+
+    async def test_overflow_links_become_comments_on_new_page(self):
+        self.overflow_ticket()
+        self.repo._query_collection.return_value = {"results": [], "has_more": False}
+        self.repo.client.pages.create.return_value = {"id": "new-page"}
+        await self.repo.write_all([self.ticket])
+        props = self.repo.client.pages.create.call_args.kwargs['properties']
+        self.assertNotIn('상세 링크4', props)
+        comment = self.repo.client.comments.create.call_args.kwargs
+        self.assertEqual(comment['parent'], {'page_id': 'new-page'})
+        self.assertEqual([p['text']['link']['url'] for p in comment['rich_text'] if p['text'].get('link')],
+                         ['https://example.com/3', 'https://example.com/4'])
+
+    async def test_existing_page_gets_only_new_overflow_links(self):
+        self.overflow_ticket()
+        self.set_existing()
+        old = {'rich_text': [{'text': {'content': '추가 상세 링크 (자동 등록)\n'}},
+                            {'text': {'content': 'https://example.com/3', 'link': {'url': 'https://example.com/3'}}}]}
+        self.repo.client.comments.list.side_effect = [
+            {'results': [], 'has_more': True, 'next_cursor': 'next'},
+            {'results': [old], 'has_more': False},
+        ]
+        await self.repo.write_all([self.ticket])
+        created = self.repo.client.comments.create.call_args.kwargs['rich_text']
+        self.assertEqual([p['text']['link']['url'] for p in created if p['text'].get('link')], ['https://example.com/4'])
+        self.repo.client.comments.list.side_effect = None
+        self.repo.client.comments.list.return_value = {'results': [old, {'rich_text': created}], 'has_more': False}
+        self.repo.client.comments.create.reset_mock()
+        await self.repo.write_all([self.ticket])
+        self.repo.client.comments.create.assert_not_called()
+
+    def test_three_links_never_access_comments_and_unused_properties_clear(self):
+        self.overflow_ticket(3)
+        self.assertFalse(self.repo._append_overflow_comments('page', self.ticket))
+        self.repo.client.comments.list.assert_not_called()
+        self.overflow_ticket(1)
+        props = self.repo._build_properties(self.ticket)
+        self.assertEqual(props['상세 링크2'], {'url': None})
+        self.assertEqual(props['상세 링크3'], {'url': None})
+
+    def test_incomplete_comment_pagination_does_not_post(self):
+        self.overflow_ticket()
+        self.repo.client.comments.list.return_value = {'results': [], 'has_more': True, 'next_cursor': None}
+        with self.assertRaisesRegex(RuntimeError, 'pagination'):
+            self.repo._append_overflow_comments('page', self.ticket)
+        self.repo.client.comments.create.assert_not_called()
 
     async def test_subsecond_ticket_time_matches_saved_second_precision(self):
         self.set_existing()
