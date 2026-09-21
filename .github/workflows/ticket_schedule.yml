@@ -57,7 +57,10 @@ jobs:
         id: scrape
         run: python run.py
 
+      # Notion links may already exist when scraping fails or is cancelled.
       - name: Prepare for pushing .ics files to main branch
+        id: prepare_ics
+        if: ${{ always() && steps.scrape.outcome != 'skipped' && steps.scrape.outcome != '' }}
         run: |
           git config --local user.email "github-actions@github.com"
           git config --local user.name "GitHub Actions"
@@ -65,19 +68,23 @@ jobs:
           git fetch origin main
           git worktree add temp-main origin/main
 
-          rm -rf temp-main/ical_exports
           mkdir -p temp-main/ical_exports
-          cp -r ical_exports/*.ics temp-main/ical_exports/
+          # Keep previously published URLs, including files from other runs.
+          find ical_exports -maxdepth 1 -name '*.ics' -exec cp {} temp-main/ical_exports/ \;
+          touch temp-main/.nojekyll
 
       - name: Commit & Push .ics files to main
+        id: publish_ics
+        if: ${{ always() && steps.prepare_ics.outcome == 'success' }}
         run: |
           cd temp-main
 
-          git add ical_exports/*.ics
+          git add -- ical_exports .nojekyll
           git diff --cached --quiet || git commit -m "Update .ics schedule files"
           git push origin HEAD:main
 
       - name: Cleanup
+        if: ${{ always() && steps.publish_ics.outcome == 'success' }}
         run: |
           git worktree remove temp-main --force
 
