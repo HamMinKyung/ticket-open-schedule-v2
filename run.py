@@ -18,6 +18,7 @@ from crawler.sejongpac import SejongPac
 from crawler.ticketlink import TicketLinkCrawler
 from crawler.yes24 import Yes24Crawler
 from crawler.caci import CaciCrawler
+from crawler.charlotte import CharlotteCrawler
 from merge.merge import merge_ticket_sources
 from notion_writer.writer import NotionRepository
 from datetime import datetime, timedelta
@@ -46,7 +47,7 @@ async def main():
     logger.info(f"크롤링 기간: {dr[0]} ~ {dr[1]}")
     crawlers = [
         NolCrawler(dr), MelonCrawler(dr), SejongPac(dr), SacCrawler(dr), TicketLinkCrawler(dr), Yes24Crawler(dr),
-        LGArtCrawler(dr), CaciCrawler(dr)
+        LGArtCrawler(dr), CaciCrawler(dr), CharlotteCrawler(dr)
     ]
 
     # ✅ 예외가 발생해도 전체 실행 유지

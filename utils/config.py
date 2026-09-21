@@ -154,6 +154,12 @@ class Settings(BaseSettings):
                 "User-Agent": USER_AGENT,
             },
         },
+        'charlotte': {
+            'base_url': 'https://www.charlottetheater.co.kr',
+            'list_endpoint': '/customer/notice/list.asp',
+            'params': {'page': 1, 'schType': 'TITLE', 'schWord': '티켓오픈'},
+            'headers': {'User-Agent': USER_AGENT},
+        },
         'caci': {
             'base_url': 'https://www.caci.or.kr',
             'list_url': 'https://www.caci.or.kr/community/notice?q=MWEwOTU5OTE5ZjNiNGEwOTk2ZWJjOWJhYTc4OTRkY2U%3d',
