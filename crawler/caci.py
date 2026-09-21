@@ -8,9 +8,10 @@ import aiohttp
 from bs4 import BeautifulSoup
 
 from crawler.base import AsyncCrawlerBase
+from crawler.lgart import LGArtCrawler
 from models.ticket import TicketInfo
 from utils.config import settings
-from utils.utils import extract_cast_from_lines, extract_open_round, normalize_title
+from utils.utils import extract_cast_from_lines, extract_open_round, extract_open_round_period, extract_performance_period, normalize_title
 
 logger = logging.getLogger(__name__)
 
@@ -32,18 +33,20 @@ class CaciCrawler(AsyncCrawlerBase):
         async with session.get(self.list_url, headers=self.headers) as resp:
             resp.raise_for_status()
             html = await resp.text()
-        soup = BeautifulSoup(html, "html.parser")
+        data = LGArtCrawler._extract_vue_data(html, "ArticleTitles")
+        if "ArticleTitles" not in data:
+            raise ValueError("충무아트센터 공지 목록 데이터가 없습니다")
         items = []
         seen = set()
-        for link in soup.select("a[href*='/community/notice/']"):
-            href = link.get("href", "")
-            if not re.search(r"/community/notice/\d+", href):
+        for article in data["ArticleTitles"]:
+            href = article.get("DetailsUrl")
+            if not href or article.get("CategoryID") != 17:
                 continue
             url = urljoin(self.cfg["base_url"], href)
             if url in seen:
                 continue
-            text = " ".join(link.get_text(" ", strip=True).split())
-            if "티켓공지" not in text and "티켓오픈" not in text and "티켓 오픈" not in text:
+            text = article.get("Title", "")
+            if not re.search(r"티켓\s*오픈", text):
                 continue
             seen.add(url)
             items.append({"detail_url": url, "title": text})
@@ -53,20 +56,25 @@ class CaciCrawler(AsyncCrawlerBase):
         async with session.get(item["detail_url"], headers=self.headers) as resp:
             resp.raise_for_status()
             html = await resp.text()
-        soup = BeautifulSoup(html, "html.parser")
+        article = LGArtCrawler._extract_vue_data(html, "Article").get("Article")
+        if not article:
+            raise ValueError("충무아트센터 상세 공지 데이터가 없습니다")
+        soup = BeautifulSoup(article.get("Contents") or "", "html.parser")
         text = soup.get_text("\n", strip=True)
-        title = self._extract_title(soup, item.get("title", ""))
-        title = normalize_title(self._strip_notice_title(title))
-        period = self._extract_value(text, r"오픈\s*공연\s*기간") or "-"
+        raw_title = article.get("Title") or item["title"]
+        title = raw_title
+        title = normalize_title(title)
+        title = re.sub(r"\s+프리뷰\s*$", "", title)
+        period = extract_performance_period(text) or "-"
         cast = extract_cast_from_lines(text.splitlines())
-        round_info = extract_open_round(title, text) or "-"
+        round_info = extract_open_round_period(text) or extract_open_round(raw_title) or "-"
         tickets = []
         for open_type, open_dt in self._extract_open_datetimes(text):
             tickets.append(TicketInfo(
                 title=title, open_datetime=open_dt, round_info=round_info,
                 performance_period=period, cast=cast, detail_url=item["detail_url"],
                 category=self._category_from_title(title), open_type=open_type,
-                venue="충무아트센터", providers={"충무아트센터"}, solo_sale=True,
+                venue="충무아트센터", providers={"충무아트센터"}, solo_sale=False,
                 content={"공지": text}, source="충무아트센터", regions="서울",
             ))
         return tickets
@@ -79,20 +87,26 @@ class CaciCrawler(AsyncCrawlerBase):
             dt = self._parse_datetime(line)
             if dt and self.start <= dt <= self.end:
                 label = "선예매" if "선예매" in line else "일반예매" if "일반예매" in line else "티켓오픈"
-                result.append((label, dt))
+                if (label, dt) not in result:
+                    result.append((label, dt))
         return result
 
     @staticmethod
     def _parse_datetime(text: str) -> datetime | None:
-        match = re.search(r"(\d{4})\.\s*(\d{1,2})\.\s*(\d{1,2}).*?(오전|오후)?\s*(\d{1,2})(?:시|[:：](\d{2}))?", text)
+        match = re.search(r"(\d{4})\s*[.년/-]\s*(\d{1,2})\s*[.월/-]\s*(\d{1,2})\s*[.일]?\s*(?:\([^)]*\))?\s*(오전|오후)?\s*(\d{1,2})(?:시(?:\s*(\d{1,2})분)?|[:：](\d{2}))", text)
         if not match:
             return None
         year, month, day = map(int, match.group(1, 2, 3))
         hour = int(match.group(5))
-        minute = int(match.group(6) or 0)
+        minute = int(match.group(6) or match.group(7) or 0)
         if match.group(4) == "오후" and hour < 12:
             hour += 12
-        return datetime(year, month, day, hour, minute)
+        if match.group(4) == "오전" and hour == 12:
+            hour = 0
+        try:
+            return datetime(year, month, day, hour, minute)
+        except ValueError:
+            return None
 
     @staticmethod
     def _extract_value(text: str, label: str) -> str | None:
