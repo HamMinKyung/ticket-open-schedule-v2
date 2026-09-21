@@ -149,7 +149,7 @@ class Settings(BaseSettings):
         'lg_art': {
             'base_url': "https://www.lgart.com",
             # 티켓 분류의 1페이지만 조회합니다.
-            'list_endpoint': "/community/ko/notice?q=NGQxNGFjNjZhMjE2NDYzODg1MGJiNzUwZDlhOGFiNjE%3d",
+            'list_endpoint': "/community/ko/notice",
             "headers": {
                 "User-Agent": USER_AGENT,
             },
