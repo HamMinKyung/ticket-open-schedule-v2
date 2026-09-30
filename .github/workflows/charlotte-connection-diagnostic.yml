@@ -1,0 +1,95 @@
+name: Charlotte Connection Diagnostic
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  diagnose:
+    runs-on: ubuntu-22.04
+    timeout-minutes: 8
+    steps:
+      - uses: actions/setup-python@v4
+        with:
+          python-version: '3.10'
+      - name: DNS and direct TCP / TLS
+        shell: bash
+        run: |
+          python -u - <<'PY'
+          import socket, ssl, time
+          host = 'www.charlottetheater.co.kr'
+          started = time.monotonic()
+          try:
+              addresses = socket.getaddrinfo(host, 443, type=socket.SOCK_STREAM)
+          except OSError as exc:
+              print('DNS FAILED:', type(exc).__name__, str(exc))
+              raise SystemExit(1)
+          print('DNS seconds:', round(time.monotonic() - started, 3))
+          seen = set()
+          for family, kind, proto, _, address in addresses:
+              if (family, address) in seen:
+                  continue
+              seen.add((family, address))
+              print('ADDRESS:', family.name, address, flush=True)
+              phase = 'TCP'
+              started = time.monotonic()
+              try:
+                  with socket.socket(family, kind, proto) as sock:
+                      sock.settimeout(30)
+                      sock.connect(address)
+                      print('TCP seconds:', round(time.monotonic() - started, 3), flush=True)
+                      phase = 'TLS'
+                      started = time.monotonic()
+                      with ssl.create_default_context().wrap_socket(sock, server_hostname=host) as tls:
+                          print('TLS seconds:', round(time.monotonic() - started, 3), 'version:', tls.version(), flush=True)
+              except (OSError, ssl.SSLError) as exc:
+                  print(phase, 'FAILED after', round(time.monotonic() - started, 3), type(exc).__name__, str(exc), flush=True)
+          PY
+      - name: Compare default / IPv4 / IPv6 HTTP timings
+        if: always()
+        shell: bash
+        run: |
+          url='https://www.charlottetheater.co.kr/customer/notice/list.asp?page=1&schType=TITLE&schWord=%ED%8B%B0%EC%BC%93%EC%98%A4%ED%94%88'
+          for family in default ipv4 ipv6; do
+            args=()
+            if [[ "$family" == ipv4 ]]; then args=(-4); fi
+            if [[ "$family" == ipv6 ]]; then args=(-6); fi
+            echo "--- $family ---"
+            curl "${args[@]}" --http1.1 --connect-timeout 30 --max-time 40 \
+              --user-agent 'Mozilla/5.0' --silent --show-error --output /dev/null \
+              --write-out 'status=%{http_code} ip=%{remote_ip} dns=%{time_namelookup} tcp=%{time_connect} tls=%{time_appconnect} first_byte=%{time_starttransfer} total=%{time_total}\n' \
+              "$url" || echo "curl_exit=$?"
+            sleep 2
+          done
+      - name: Install crawler HTTP client
+        if: always()
+        run: python -m pip install 'aiohttp~=3.11.18'
+      - name: Trace aiohttp with current crawler timeout
+        shell: bash
+        run: |
+          python -u - <<'PY'
+          import asyncio, aiohttp, time
+          async def main():
+              started = time.monotonic()
+              trace = aiohttp.TraceConfig()
+              def callback(label):
+                  async def report(session, context, params):
+                      print(round(time.monotonic() - started, 3), label, flush=True)
+                  return report
+              for event in ('request_start', 'dns_resolvehost_start', 'dns_resolvehost_end',
+                            'connection_create_start', 'connection_create_end', 'request_end', 'request_exception'):
+                  getattr(trace, 'on_' + event).append(callback(event))
+              timeout = aiohttp.ClientTimeout(total=30, connect=10)
+              print('aiohttp:', aiohttp.__version__, 'total=30 connect=10')
+              try:
+                  async with aiohttp.ClientSession(timeout=timeout, trace_configs=[trace], headers={'User-Agent': 'Mozilla/5.0'}) as session:
+                      async with session.get('https://www.charlottetheater.co.kr/customer/notice/list.asp', params={'page': 1, 'schType': 'TITLE', 'schWord': '티켓오픈'}) as response:
+                          body = await response.read()
+                          print('HTTP:', response.status, 'bytes:', len(body), 'total:', round(time.monotonic() - started, 3))
+              except Exception as exc:
+                  print('FAILED:', type(exc).__name__, str(exc), 'total:', round(time.monotonic() - started, 3))
+                  raise
+          asyncio.run(main())
+          PY
