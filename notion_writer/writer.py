@@ -22,6 +22,7 @@ from zoneinfo import ZoneInfo
 import glob
 import hashlib
 from utils.location import location_key
+from utils.utils import normalize_title_for_merge
 from urllib.parse import quote
 
 
@@ -114,7 +115,6 @@ class NotionRepository:
             self.database_id,
             filter={
                 "and": [
-                    {"property": "공연 제목", "title": {"equals": ticket.title}},
                     {"property": "오픈 일시", "date": {"equals": iso_date}},
                 ]
             }
@@ -123,7 +123,7 @@ class NotionRepository:
         #     print(f"❌ 페이지 없음: {ticket.title} (오픈일시={ticket.open_datetime})")
         # else:
         #     print(f"✅ 페이지 존재: {ticket.title} (page_id={results[0]['id']})")
-        return next((page for page in results if self._page_location(page) == location_key(ticket.regions, ticket.venue)), None)
+        return next((page for page in results if self._page_key(page) == self._ticket_key(ticket)), None)
 
     @staticmethod
     def _date_value(value, time_zone=None):
@@ -139,8 +139,14 @@ class NotionRepository:
         return "".join(part.get("text", {}).get("content", part.get("plain_text", "")) for part in parts)
 
     def _ticket_key(self, ticket):
-        return (ticket.title, self._date_value(self._local_open_datetime(ticket).isoformat(timespec="seconds")),
+        return (normalize_title_for_merge(ticket.title), self._date_value(self._local_open_datetime(ticket).isoformat(timespec="seconds")),
                 location_key(ticket.regions, ticket.venue))
+
+    def _page_key(self, page):
+        props = page.get("properties", {})
+        date = props.get("오픈 일시", {}).get("date") or {}
+        return (normalize_title_for_merge(self._text_value(props.get("공연 제목", {}).get("title", []))),
+                self._date_value(date.get("start"), date.get("time_zone")), self._page_location(page))
 
     def _page_location(self, page):
         props = page.get("properties", {})
@@ -158,8 +164,7 @@ class NotionRepository:
             props = page.get("properties", {})
             date = props.get("오픈 일시", {}).get("date")
             if date and date.get("start"):
-                key = (self._text_value(props.get("공연 제목", {}).get("title", [])),
-                       self._date_value(date["start"], date.get("time_zone")), self._page_location(page))
+                key = self._page_key(page)
                 index.setdefault(key, page)
         logger.info("기존 티켓 일괄 조회 완료: %s건", len(pages))
         return index

@@ -10,6 +10,21 @@ def ticket(venue, region='경기', **changes):
 
 
 class MergeLocationTests(unittest.TestCase):
+    def test_chicago_spacing_and_comma_merge(self):
+        first = ticket('LG아트센터 서울, LG SIGNATURE홀', '서울')
+        first.title = '뮤지컬 〈시카고〉'
+        second = ticket('LG아트센터 서울 LG SIGNATURE 홀', '서울')
+        second.title = '뮤지컬〈시카고〉'
+        second.source = '놀티켓'
+        merged = merge_ticket_sources([first, second])
+        self.assertEqual(len(merged), 1)
+        self.assertEqual(merged[0].providers, {'티켓링크', '놀티켓'})
+
+    def test_unbracketed_title_spacing_and_comma_merge(self):
+        first, second = ticket('공연장'), ticket('공연장')
+        first.title, second.title = '안녕, 시카고', '안녕시카고'
+        self.assertEqual(len(merge_ticket_sources([first, second])), 1)
+
     def test_same_province_different_venues_stay_separate(self):
         merged = merge_ticket_sources([ticket('안산문화예술의전당', cast='안산 배우', detail_url='https://example.com/ansan'),
                                        ticket('수원SK아트리움', detail_url='https://example.com/suwon')])

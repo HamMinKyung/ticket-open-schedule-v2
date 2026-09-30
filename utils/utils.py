@@ -58,7 +58,7 @@ def normalize_title_for_merge(text: str) -> str:
         text = max(bracketed, key=len)
 
     text = re.sub(r'[^\w가-힣]+', ' ', text)
-    return ' '.join(text.casefold().split())
+    return ''.join(text.casefold().split())
 
 CAST_HEADER_PATTERN = re.compile(
     r"^\s*(?:[\[［]?\s*)?(출연|출연진|캐스팅|캐스트|배우|CAST|Casting|Line\s*up|라인업)(?:\s*[\]］]?)?\s*[:：-]?\s*$",
@@ -114,7 +114,7 @@ def extract_cast_from_lines(lines: list[str]) -> str:
             if cast != "-":
                 return cast
 
-        if not CAST_HEADER_PATTERN.match(line) and not re.search(r"(출연진|캐스팅|캐스트|CAST|Casting|라인업)", line, re.I):
+        if not CAST_HEADER_PATTERN.fullmatch(line):
             continue
 
         cast_lines = []

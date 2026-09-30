@@ -163,6 +163,34 @@ class NotionSyncTests(unittest.IsolatedAsyncioTestCase):
         self.assertIsNone(self.repo._find_page(other))
         self.assertEqual(self.repo._find_page(self.ticket)['id'], 'page')
 
+    async def test_chicago_variants_reuse_existing_page_in_batch_and_direct_lookup(self):
+        self.ticket.title = '뮤지컬 〈시카고〉'
+        self.ticket.venue = 'LG아트센터 서울, LG SIGNATURE홀'
+        self.set_existing()
+        variant = self.ticket.model_copy(update={
+            'title': '뮤지컬〈시카고〉', 'venue': 'LG아트센터 서울 LG SIGNATURE 홀',
+        })
+        self.assertEqual(self.repo._find_page(variant)['id'], 'page')
+        query = self.repo._query_collection.call_args.kwargs['filter']
+        self.assertNotIn('공연 제목', str(query))
+        await self.repo.write_all([variant])
+        self.repo.client.pages.create.assert_not_called()
+        self.assertEqual(self.repo.client.pages.update.call_args.kwargs['page_id'], 'page')
+
+    async def test_new_title_variants_create_only_one_page(self):
+        self.repo._query_collection.return_value = {'results': [], 'has_more': False}
+        self.repo.client.pages.create.return_value = {'id': 'new-page'}
+        variant = self.ticket.model_copy(update={'title': '테스트,공연', 'venue': '공 연,장'})
+        await self.repo.write_all([self.ticket, variant])
+        self.repo.client.pages.create.assert_called_once()
+
+    def test_direct_lookup_rejects_different_title_time_and_region(self):
+        self.set_existing()
+        for changes in ({'title': '다른 공연'}, {'regions': '부산'},
+                        {'open_datetime': datetime(2026, 9, 22, 14)}):
+            with self.subTest(changes=changes):
+                self.assertIsNone(self.repo._find_page(self.ticket.model_copy(update=changes)))
+
     def test_calendar_files_are_distinct_for_different_venues(self):
         other = self.ticket.model_copy(update={"venue": "다른 공연장"})
         self.repo.ical_url = 'https://example.com'

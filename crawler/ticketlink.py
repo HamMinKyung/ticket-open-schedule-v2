@@ -244,31 +244,5 @@ class TicketLinkCrawler(AsyncCrawlerBase):
     @staticmethod
     def extract_cast_from_body(body_soup: BeautifulSoup) -> str:
         if not body_soup: return "-"
-        found = False
-        lines: List[str] = []
-        for el in body_soup.find_all(["p", "div"]):
-            txt = TicketLinkCrawler._norm_txt(el)
-            if not found:
-                if "캐스팅" in txt or "CAST" in txt or "출연진" in txt:
-                    found = True
-                continue
-            if found:
-                if not txt:
-                    break
-                # 전각(［) / 반각([) 으로 감싼 순수 헤더 라인 처리
-                if re.match(r'^[\[［].+[\]］]$', txt):
-                    # [CAST], ［CAST］ 같은 캐스트 관련 헤더는 스킵
-                    if "CAST" in txt.upper() or "캐스팅" in txt:
-                        continue
-                    # [CREATIVE TEAM] 등 다른 섹션 헤더는 종료
-                    break
-                if txt[0] in ("[", "［") or txt.startswith("※") or txt.startswith("기획사정보"):
-                    break
-                lines.append(txt)
-
-        cast = clean_cast_text("\n".join(lines))
-        if cast != "-":
-            return cast
-
-        body_lines = [TicketLinkCrawler._norm_txt(el) for el in body_soup.find_all(["p", "div"])]
-        return extract_cast_from_lines(body_lines)
+        # 부모 div 전체나 홍보 문단의 '캐스팅'을 헤더로 인식하지 않는다.
+        return extract_cast_from_lines(body_soup.get_text("\n", strip=True).splitlines())
