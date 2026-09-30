@@ -14,6 +14,7 @@ logger = logging.getLogger(__name__)
 class AsyncCrawlerBase(ABC):
     headers: Dict[str, str] = {}
     timeout: aiohttp.ClientTimeout
+    detail_concurrency = 5
 
     def __init__(self, date_range: Tuple[datetime, datetime]):
         self.timeout = aiohttp.ClientTimeout(total=settings.HTTP_TIMEOUT)
@@ -28,7 +29,7 @@ class AsyncCrawlerBase(ABC):
         pass
 
     async def crawl(self) -> List[TicketInfo]:
-        semaphore = asyncio.Semaphore(5)
+        semaphore = asyncio.Semaphore(self.detail_concurrency)
 
         async def limited_fetch_detail(item):
             async with semaphore:

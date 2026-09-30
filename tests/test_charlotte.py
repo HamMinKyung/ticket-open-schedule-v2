@@ -2,7 +2,8 @@ import json
 import unittest
 from datetime import datetime
 from pathlib import Path
-from unittest.mock import AsyncMock, MagicMock
+from unittest.mock import AsyncMock, MagicMock, patch
+import aiohttp
 
 from crawler.charlotte import CharlotteCrawler
 from merge.merge import merge_ticket_sources
@@ -19,6 +20,37 @@ class CharlotteTests(unittest.IsolatedAsyncioTestCase):
     def setUp(self):
         self.crawler = CharlotteCrawler((datetime(2026, 1, 1), datetime(2026, 12, 31, 23, 59)))
         self.fixtures = Path(__file__).parent / 'fixtures'
+
+    async def test_timeout_retries_then_recovers(self):
+        session = MagicMock()
+        session.get.side_effect = [TimeoutError(), response('<html></html>')]
+        with patch('crawler.charlotte.asyncio.sleep', new_callable=AsyncMock) as sleep:
+            self.assertEqual(await self.crawler._fetch_list(session), [])
+        self.assertEqual(session.get.call_count, 2)
+        sleep.assert_awaited_once_with(1)
+        self.assertEqual(session.get.call_args.kwargs['timeout'].total, 30)
+
+    async def test_repeated_timeout_is_bounded(self):
+        session = MagicMock()
+        session.get.side_effect = TimeoutError()
+        with patch('crawler.charlotte.asyncio.sleep', new_callable=AsyncMock) as sleep:
+            self.assertEqual(await self.crawler._safe_fetch_list(session), [])
+        self.assertEqual(session.get.call_count, 3)
+        self.assertEqual(sleep.await_count, 2)
+
+    async def test_nontransient_http_error_is_not_retried(self):
+        session = MagicMock()
+        session.get.side_effect = aiohttp.ClientResponseError(MagicMock(), (), status=404)
+        with self.assertRaises(aiohttp.ClientResponseError):
+            await self.crawler._get_html(session, 'https://example.com')
+        session.get.assert_called_once()
+
+    async def test_detail_transient_http_error_recovers(self):
+        session = MagicMock()
+        session.get.side_effect = [aiohttp.ClientResponseError(MagicMock(), (), status=503), response('ok')]
+        with patch('crawler.charlotte.asyncio.sleep', new_callable=AsyncMock):
+            self.assertEqual(await self.crawler._get_html(session, 'https://example.com'), 'ok')
+        self.assertEqual(session.get.call_count, 2)
 
     async def test_live_list_fixture_only_first_search_page(self):
         session = MagicMock()

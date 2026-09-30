@@ -1,4 +1,7 @@
 import re
+import asyncio
+import logging
+import aiohttp
 from datetime import datetime
 from urllib.parse import parse_qs, urljoin, urlparse
 
@@ -10,6 +13,9 @@ from utils.config import settings
 from utils.utils import extract_cast_from_lines, extract_open_round, extract_open_round_period, normalize_title
 
 
+logger = logging.getLogger(__name__)
+
+
 class CharlotteCrawler(AsyncCrawlerBase):
     """샤롯데씨어터 제목 '티켓오픈' 검색 결과의 첫 페이지만 수집한다."""
 
@@ -18,11 +24,29 @@ class CharlotteCrawler(AsyncCrawlerBase):
         self.cfg = settings.CRAWLERS['charlotte']
         self.list_url = self.cfg['base_url'] + self.cfg['list_endpoint']
         self.headers = dict(self.cfg['headers'])
+        self.timeout = aiohttp.ClientTimeout(total=30, connect=10)
+
+    async def _get_html(self, session, url, **kwargs):
+        for attempt in range(3):
+            try:
+                async with session.get(url, headers=self.headers, timeout=self.timeout, **kwargs) as resp:
+                    resp.raise_for_status()
+                    return await resp.text()
+            except (asyncio.TimeoutError, aiohttp.ClientConnectionError, aiohttp.ClientPayloadError,
+                    aiohttp.ClientResponseError) as exc:
+                if isinstance(exc, aiohttp.ClientResponseError) and exc.status not in (502, 503, 504):
+                    raise
+                logger.warning(
+                    '[CharlotteCrawler] 요청 실패: url=%s, 시도=%s/3, 제한=%ss, 오류=%s%s',
+                    url, attempt + 1, self.timeout.total, type(exc).__name__,
+                    f' (HTTP {exc.status})' if isinstance(exc, aiohttp.ClientResponseError) else '',
+                )
+                if attempt == 2:
+                    raise
+                await asyncio.sleep(2 ** attempt)
 
     async def _fetch_list(self, session):
-        async with session.get(self.list_url, params=self.cfg['params'], headers=self.headers) as resp:
-            resp.raise_for_status()
-            soup = BeautifulSoup(await resp.text(), 'html.parser')
+        soup = BeautifulSoup(await self._get_html(session, self.list_url, params=self.cfg['params']), 'html.parser')
         items, seen = [], set()
         for link in soup.select('tbody td.left a[href]'):
             title = link.get_text(' ', strip=True)
@@ -43,9 +67,7 @@ class CharlotteCrawler(AsyncCrawlerBase):
         return items
 
     async def _fetch_detail(self, session, item):
-        async with session.get(item['detail_url'], headers=self.headers) as resp:
-            resp.raise_for_status()
-            soup = BeautifulSoup(await resp.text(), 'html.parser')
+        soup = BeautifulSoup(await self._get_html(session, item['detail_url']), 'html.parser')
         body = soup.select_one('.list_view .view_contents')
         if body is None:
             raise ValueError('샤롯데씨어터 공지 본문을 찾을 수 없습니다')

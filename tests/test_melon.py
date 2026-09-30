@@ -3,6 +3,7 @@ from datetime import datetime
 from unittest.mock import AsyncMock, patch
 
 from crawler.melon import MelonCrawler
+from bs4 import BeautifulSoup
 
 
 class Response:
@@ -25,15 +26,21 @@ class Response:
 
 
 class Session:
-    def __init__(self, responses):
+    def __init__(self, responses, get_responses=None):
         self.responses = iter(responses)
         self.calls = []
+        self.get_calls = []
+        self.get_responses = iter(get_responses or [Response(200)])
 
     async def __aenter__(self):
         return self
 
     async def __aexit__(self, *args):
         return False
+
+    def get(self, url, **kwargs):
+        self.get_calls.append((url, kwargs))
+        return next(self.get_responses)
 
     def post(self, url, **kwargs):
         self.calls.append(kwargs["data"])
@@ -76,6 +83,32 @@ class MelonLockTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(await self.crawler._fetch_list(session), [])
         self.assertFalse(self.crawler.locked)
         self.assertEqual(len(session.calls), count)
+
+    async def test_entry_lock_skips_ajax_requests(self):
+        session = Session([], [Response(423)])
+        self.assertEqual(await self.crawler._fetch_list(session), [])
+        self.assertTrue(self.crawler.locked)
+        self.assertEqual(session.calls, [])
+
+    async def test_detail_lock_stops_queued_details(self):
+        session = Session([], [Response(423)])
+        item = {'title_tag': BeautifulSoup('<a href="./detail.htm?csoonId=1">test</a>', 'html.parser').a}
+        self.assertEqual(await self.crawler._fetch_detail(session, item), [])
+        self.assertTrue(self.crawler.locked)
+        self.assertEqual(await self.crawler._fetch_detail(session, item), [])
+        self.assertEqual(len(session.get_calls), 1)
+
+    async def test_session_headers_and_ajax_header(self):
+        from unittest.mock import MagicMock
+        session = MagicMock()
+        session.get.return_value = Response(200)
+        session.post.return_value = Response(423)
+        await self.crawler._fetch_list(session)
+        initial = session.get.call_args.kwargs['headers']
+        ajax = session.post.call_args.kwargs['headers']
+        self.assertEqual(initial['User-Agent'], ajax['User-Agent'])
+        self.assertEqual(ajax['X-Requested-With'], 'XMLHttpRequest')
+        self.assertNotIn('X-Requested-With', self.crawler._get_headers())
 
 
 if __name__ == "__main__":

@@ -17,23 +17,38 @@ import random
 
 
 class MelonCrawler(AsyncCrawlerBase):
+    detail_concurrency = 1
+
     def __init__(self, date_range: Tuple[datetime, datetime]):
         super().__init__(date_range)
         self.cfg = settings.CRAWLERS['melon']
         self.list_url = self.cfg['list_endpoint']
         self.locked = False
+        self.headers = {
+            'Referer': self.cfg['Referer'],
+            'User-Agent': self.cfg['user_agents'][0],
+            'Accept-Language': 'ko-KR,ko;q=0.9',
+        }
 
     def _get_headers(self) -> Dict[str, str]:
-        # 설정된 리스트에서 랜덤 추출
-        ua_list = self.cfg.get('user_agents')
-        return {
-            "Referer": self.cfg['Referer'],
-            "User-Agent": random.choice(ua_list)
-        }
+        return dict(self.headers)
+
+    def _is_locked(self, resp, context):
+        if resp.status != 423:
+            return False
+        self.locked = True
+        logger.warning('[MelonCrawler] 423 Locked - 현재 실행의 추가 요청 중단: %s', context)
+        return True
 
     async def _fetch_list(self, session: aiohttp.ClientSession) -> List[Dict[str, Any]]:
         self.locked = False
         items: List[Dict[str, Any]] = []
+        # 같은 세션으로 진입 페이지의 쿠키를 받은 뒤 AJAX 목록을 요청한다.
+        async with session.get(self.cfg['Referer'], headers=self._get_headers()) as resp:
+            if self._is_locked(resp, '진입 페이지'):
+                return []
+            resp.raise_for_status()
+            await resp.text()
         # 장르 코드별·페이지별 리스트 수집
         for code, genre_name in self.cfg['genre_map'].items():
             for page in self.cfg['pages']:
@@ -44,13 +59,9 @@ class MelonCrawler(AsyncCrawlerBase):
                 }
                 await asyncio.sleep(random.uniform(1.0, 3.0))
                 headers = self._get_headers()
+                headers["X-Requested-With"] = "XMLHttpRequest"
                 async with session.post(self.list_url, headers=headers, data=payload) as resp:
-                    if resp.status == 423:
-                        self.locked = True
-                        logger.warning(
-                            "[MelonCrawler] 423 Locked - 멜론 수집 중단, 추후 실행에서 재시도: genre=%s, page=%s",
-                            genre_name, page,
-                        )
+                    if self._is_locked(resp, f'genre={genre_name}, page={page}'):
                         return []
                     resp.raise_for_status()
                     html = await resp.text()
@@ -91,13 +102,18 @@ class MelonCrawler(AsyncCrawlerBase):
             session: aiohttp.ClientSession,
             item: Dict[str, Any]
     ) -> List[TicketInfo]:
+        if self.locked:
+            return []
         cfg = self.cfg
         # 상세 페이지 URL
         href = item['title_tag']['href'].lstrip("./")
         detail_url = f"{cfg['base_url']}/csoon/{href}"
 
         headers = self._get_headers()
+        await asyncio.sleep(random.uniform(1.0, 3.0))
         async with session.get(detail_url, headers=headers) as resp:
+            if self._is_locked(resp, f'detail={detail_url}'):
+                return []
             resp.raise_for_status()
             html = await resp.text()
         soup = BeautifulSoup(html, 'html.parser')

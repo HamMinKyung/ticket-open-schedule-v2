@@ -36,8 +36,8 @@ def calc_date_range() -> Tuple[datetime, datetime]:
     # 당일 00:00
     start = today.replace(hour=0, minute=0, second=0, microsecond=0)
 
-    # 7일 뒤 23:59
-    end = (start + timedelta(days=7)).replace(hour=23, minute=59, second=0, microsecond=0)
+    # 10일 뒤 하루 끝까지 수집한다.
+    end = (start + timedelta(days=10)).replace(hour=23, minute=59, second=59, microsecond=999999)
 
     return start, end
 
