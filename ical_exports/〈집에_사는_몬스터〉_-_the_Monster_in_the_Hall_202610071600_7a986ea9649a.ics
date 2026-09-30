@@ -8,11 +8,11 @@ ACTION:DISPLAY
 DESCRIPTION:Reminder
 END:VALARM
 CATEGORIES:티켓오픈
-DESCRIPTION:놀티켓 
+DESCRIPTION:놀티켓\, LG 아트센터 
 DTEND:20261007T073000Z
-LOCATION:고려대학교 화정체육관
+LOCATION:LG아트센터 서울\,  U+ 스테이지
 DTSTART:20261007T070000Z
-SUMMARY:티켓오픈 스트릿 월드 파이터 : 디렉터스 워 〈ON THE STAGE〉 Tour - 서울
-UID:8d4db0ad-e2d4-462a-beed-48ed18649399@8d4d.org
+SUMMARY:티켓오픈 〈집에 사는 몬스터〉 - the Monster in the Hall
+UID:5ea4c71f-0f92-4056-81d7-7c3e927279bb@5ea4.org
 END:VEVENT
 END:VCALENDAR
