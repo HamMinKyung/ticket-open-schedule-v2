@@ -10,6 +10,22 @@ def ticket(venue, region='경기', **changes):
 
 
 class MergeLocationTests(unittest.TestCase):
+    def test_missing_hall_merges_in_either_order(self):
+        for root, hall in [('충무아트센터', '충무아트센터 대극장'),
+                           ('샤롯데씨어터', '샤롯데씨어터 대극장'),
+                           ('LG아트센터 서울', 'LG아트센터 서울 LG SIGNATURE홀')]:
+            for reverse in (False, True):
+                items = [ticket(root, '서울'), ticket(hall, '서울')]
+                merged = merge_ticket_sources(items[::-1] if reverse else items)
+                self.assertEqual(len(merged), 1)
+                self.assertEqual(merged[0].venue, hall)
+
+    def test_ambiguous_halls_and_other_dates_do_not_merge(self):
+        items = [ticket(v, '서울') for v in ['충무아트센터', '충무아트센터 대극장', '충무아트센터 소극장']]
+        self.assertEqual(len(merge_ticket_sources(items)), 3)
+        items[1].open_datetime = datetime(2026, 9, 23, 14)
+        self.assertEqual(len(merge_ticket_sources(items[:2])), 2)
+
     def test_chicago_spacing_and_comma_merge(self):
         first = ticket('LG아트센터 서울, LG SIGNATURE홀', '서울')
         first.title = '뮤지컬 〈시카고〉'

@@ -163,6 +163,35 @@ class NotionSyncTests(unittest.IsolatedAsyncioTestCase):
         self.assertIsNone(self.repo._find_page(other))
         self.assertEqual(self.repo._find_page(self.ticket)['id'], 'page')
 
+    async def test_missing_hall_reuses_page_and_preserves_detail(self):
+        for old, new in [('충무아트센터', '충무아트센터 대극장'),
+                         ('충무아트센터 대극장', '충무아트센터')]:
+            self.ticket.venue = old
+            self.set_existing()
+            incoming = self.ticket.model_copy(update={'venue': new})
+            self.assertEqual(self.repo._find_page(incoming)['id'], 'page')
+            await self.repo.write_all([incoming])
+            self.repo.client.pages.create.assert_not_called()
+            if new == '충무아트센터 대극장':
+                self.assertEqual(self.repo.client.pages.update.call_args.kwargs['properties']['공연 장소']
+                                 ['rich_text'][0]['text']['content'], new)
+
+    def test_generic_page_cannot_match_multiple_incoming_halls(self):
+        self.ticket.venue = '충무아트센터'
+        self.set_existing()
+        items = [self.ticket.model_copy(update={'venue': '충무아트센터 ' + hall})
+                 for hall in ['대극장', '소극장']]
+        self.repo._page_index = self.repo._load_ticket_index(items)
+        for item in items:
+            self.assertIsNone(self.repo._find_page(item))
+
+    def test_generic_incoming_cannot_match_multiple_existing_halls(self):
+        self.ticket.venue = '충무아트센터'
+        pages = [self.page(self.ticket.model_copy(update={'venue': '충무아트센터 ' + hall}), hall)
+                 for hall in ['대극장', '소극장']]
+        self.repo._query_collection.return_value = {'results': pages, 'has_more': False}
+        self.assertIsNone(self.repo._find_page(self.ticket))
+
     async def test_chicago_variants_reuse_existing_page_in_batch_and_direct_lookup(self):
         self.ticket.title = '뮤지컬 〈시카고〉'
         self.ticket.venue = 'LG아트센터 서울, LG SIGNATURE홀'

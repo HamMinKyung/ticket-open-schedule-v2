@@ -3,7 +3,7 @@ from typing import List
 
 from models.ticket import TicketInfo
 from utils.utils import extract_open_round, normalize_title, normalize_title_for_merge
-from utils.location import location_key
+from utils.location import location_key, resolve_location
 
 
 def _title_score(title: str) -> tuple[int, int, int]:
@@ -23,6 +23,11 @@ def _text_score(value: str) -> tuple[int, int]:
 
 
 def merge_ticket_sources(tickets: List[TicketInfo]) -> List[TicketInfo]:
+    keys = [(normalize_title_for_merge(t.title), t.open_datetime.strftime("%Y-%m-%d %H:%M"),
+             location_key(t.regions, t.venue)) for t in tickets]
+    venues = {key: t.venue for key, t in zip(keys, tickets)}
+    tickets = [t.model_copy(update={'venue': venues.get((*key[:2], resolve_location(key, keys)), t.venue)})
+               for key, t in zip(keys, tickets)]
     merged = OrderedDict()
     for tk in tickets:
         # 1) source를 providers에 포함

@@ -21,7 +21,7 @@ from datetime import datetime, timedelta, timezone
 from zoneinfo import ZoneInfo
 import glob
 import hashlib
-from utils.location import location_key
+from utils.location import location_key, resolve_location
 from utils.utils import normalize_title_for_merge
 from urllib.parse import quote
 
@@ -108,7 +108,7 @@ class NotionRepository:
         동일 제목·오픈일시·지역·공연장의 페이지를 조회합니다.
         """
         if self._page_index is not None:
-            return self._page_index.get(self._ticket_key(ticket))
+            return self._match_page(ticket, list(self._page_index.values()))
         local_dt = self._local_open_datetime(ticket)
         iso_date = local_dt.isoformat(timespec="seconds")
         results = self._get_all_pages(
@@ -123,7 +123,19 @@ class NotionRepository:
         #     print(f"❌ 페이지 없음: {ticket.title} (오픈일시={ticket.open_datetime})")
         # else:
         #     print(f"✅ 페이지 존재: {ticket.title} (page_id={results[0]['id']})")
-        return next((page for page in results if self._page_key(page) == self._ticket_key(ticket)), None)
+        return self._match_page(ticket, results)
+
+    def _match_page(self, ticket, pages):
+        key = self._ticket_key(ticket)
+        keys = [self._page_key(page) for page in pages]
+        candidates = keys + [key] + getattr(self, '_incoming_keys', [])
+        resolved = (*key[:2], resolve_location(key, candidates))
+        exact = [page for page, old in zip(pages, keys) if old == key]
+        if exact:
+            return exact[0]
+        matches = [page for page, old in zip(pages, keys)
+                   if (*old[:2], resolve_location(old, candidates)) == resolved]
+        return matches[0] if len(matches) == 1 else None
 
     @staticmethod
     def _date_value(value, time_zone=None):
@@ -154,6 +166,7 @@ class NotionRepository:
                             self._text_value(props.get("공연 장소", {}).get("rich_text", [])))
 
     def _load_ticket_index(self, tickets):
+        self._incoming_keys = [self._ticket_key(ticket) for ticket in tickets]
         dates = [self._local_open_datetime(ticket).replace(microsecond=0) for ticket in tickets]
         pages = self._get_all_pages(self.database_id, filter={"and": [
             {"property": "오픈 일시", "date": {"on_or_after": min(dates).isoformat()}},
@@ -379,6 +392,13 @@ class NotionRepository:
         try:
             existing = self._find_page(ticket)
 
+            if existing:
+                old_key = self._page_key(existing)
+                key = self._ticket_key(ticket)
+                if resolve_location(key, [key, old_key]) == old_key[2]:
+                    ticket = ticket.model_copy(update={'venue': self._text_value(
+                        existing['properties'].get('공연 장소', {}).get('rich_text', []))})
+
             ical_url = self._generate_ics_and_push(ticket)
             ticket.ical_url = ical_url
             props = self._build_properties(ticket)
@@ -466,6 +486,7 @@ class NotionRepository:
                 await asyncio.to_thread(self.upsert_ticket, ticket)
         finally:
             self._page_index = None
+            self._incoming_keys = []
 
         ics_files = glob.glob(f"{self.output_dir}/*.ics")
         logger.info(f"📁 {self.output_dir} 내 .ics 파일 수: {len(ics_files)}개")
