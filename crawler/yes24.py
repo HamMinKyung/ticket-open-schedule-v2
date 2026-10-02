@@ -3,6 +3,8 @@ import re
 from datetime import datetime
 from typing import Any, Dict, List, Tuple
 
+from utils.notice import MAX_PAGES, PageGuard, extract_venue, OpeningWindow
+
 import aiohttp
 from bs4 import BeautifulSoup
 
@@ -26,7 +28,10 @@ class Yes24Crawler(AsyncCrawlerBase):
     async def _fetch_list(self, session: aiohttp.ClientSession) -> List[Dict[str, Any]]:
         results: List[Dict[str, Any]] = []
 
-        for page in self.cfg["pages"]:
+        guard = PageGuard("Yes24Crawler")
+        window = OpeningWindow(self.start, self.end)
+        seen_notices = set()
+        for page in range(1, MAX_PAGES + 1):
             payload = {**self.cfg["params"], "page": str(page)}
             async with session.post(self.list_url, data=payload, headers=self.headers) as resp:
                 resp.raise_for_status()
@@ -34,9 +39,10 @@ class Yes24Crawler(AsyncCrawlerBase):
 
             soup = BeautifulSoup(html, "html.parser")
             rows = soup.select("div.noti-tbl table tbody tr")
-            if len(rows) <= 1:
+            if not guard.accept(a.get("href") for row in rows for a in row.select("a[href]") if self._extract_notice_id(a["href"])):
                 break
 
+            page_dates = []
             for row in rows:
                 cells = row.find_all("td")
                 if len(cells) < 3:
@@ -51,15 +57,18 @@ class Yes24Crawler(AsyncCrawlerBase):
                     continue
 
                 notice_id = self._extract_notice_id(title_link["href"])
-                if not notice_id:
+                if not notice_id or notice_id in seen_notices:
                     continue
 
+                seen_notices.add(notice_id)
                 raw_title = title_link.get_text(" ", strip=True)
                 solo_sale = "단독판매" in raw_title
                 title_for_region = raw_title.replace("단독판매", "").strip()
                 title = normalize_title(title_for_region)
 
-                for open_type, open_dt in self._extract_open_entries(cells[2]):
+                openings = self._extract_open_entries(cells[2])
+                page_dates.append(min((dt for _, dt in openings), default=None))
+                for open_type, open_dt in openings:
                     if self.start <= open_dt <= self.end:
                         results.append({
                             "notice_id": notice_id,
@@ -71,6 +80,10 @@ class Yes24Crawler(AsyncCrawlerBase):
                             "notice_url": f"{self.base_url}/Notice?#id={notice_id}",
                         })
 
+            if window.beyond(page_dates):
+                break
+        else:
+            guard.limit()
         return results
 
     async def _fetch_detail(self, session: aiohttp.ClientSession, item: Dict[str, Any]) -> List[TicketInfo]:
@@ -98,7 +111,7 @@ class Yes24Crawler(AsyncCrawlerBase):
             or "-"
         )
         performance_period = self._build_performance_period(overview)
-        venue = self._pick_first_overview_value(overview, "공연 장소", "공연장소", "장소") or "-"
+        venue = extract_venue(overview) or extract_venue(page_text) or "-"
         cast = self._extract_cast(content) or "-"
         category = self._category_from_title(title)
         region = resolve_region(venue, item.get("raw_title", title))

@@ -9,6 +9,7 @@ from urllib.parse import quote
 from bs4 import BeautifulSoup
 
 from crawler.base import AsyncCrawlerBase
+from utils.notice import extract_venue, OpeningWindow
 from models.ticket import TicketInfo
 from utils.config import settings
 from utils.utils import (
@@ -31,7 +32,7 @@ class NolCrawler(AsyncCrawlerBase):
         "Accept": "application/json",
     }
 
-    def _schedules(self, item: Dict[str, Any]) -> List[tuple[str, datetime]]:
+    def _schedules(self, item: Dict[str, Any], *, filter_range=True) -> List[tuple[str, datetime]]:
         schedules = []
         seen = set()
         for entry in item.get("ticket_dates") or []:
@@ -48,7 +49,7 @@ class NolCrawler(AsyncCrawlerBase):
             # API의 오프셋 없는 날짜는 한국 현지 시각이다.
             if dt.tzinfo is not None:
                 dt = dt.astimezone(settings.user_timezone).replace(tzinfo=None)
-            if not self.start <= dt <= self.end:
+            if filter_range and not self.start <= dt <= self.end:
                 continue
             name = (
                 entry.get("ticket_other_open_name")
@@ -84,12 +85,13 @@ class NolCrawler(AsyncCrawlerBase):
                 # 띄어쓰기가 다른 동일 예매 유형은 API 일정을 유지한다.
                 key = (re.sub(r'\s+', '', name), dt)
                 existing = {(re.sub(r'\s+', '', label), when) for label, when in schedules}
-                if self.start <= dt <= self.end and key not in existing:
+                if (not filter_range or self.start <= dt <= self.end) and key not in existing:
                     schedules.append((name, dt))
         return schedules
 
     async def _fetch_list(self, session) -> List[Dict[str, Any]]:
         result = []
+        window = OpeningWindow(self.start, self.end)
         seen_ids = set()
         seen_cursors = set()
         cursor = None
@@ -106,13 +108,18 @@ class NolCrawler(AsyncCrawlerBase):
             if not isinstance(data, dict) or not isinstance(data.get("notices"), list):
                 raise ValueError("NOL 오픈 예정 API 응답에 notices 목록이 없습니다")
             notices = data["notices"]
+            page_dates = []
             for item in notices:
                 if not isinstance(item, dict) or not item.get("id"):
                     continue
+                dates = [dt for _, dt in self._schedules(item, filter_range=False)]
+                page_dates.append(min(dates, default=None))
                 notice_id = item["id"]
                 if notice_id not in seen_ids and self._schedules(item):
                     result.append(item)
                     seen_ids.add(notice_id)
+            if window.beyond(page_dates):
+                break
             cursor = (data.get("summary") or {}).get("next_cursor")
             if not notices or not cursor:
                 break
@@ -133,6 +140,8 @@ class NolCrawler(AsyncCrawlerBase):
             return []
         title = (item.get("title") or item.get("goods_name") or "-").strip()
         venue = (item.get("venue_name") or "").strip()
+        if not venue or venue == "-":
+            venue = extract_venue(self._text(item.get("goods_info"))) or "-"
         regions = resolve_region(
             venue, title, item.get("venue_address") or "",
             default_region=item.get("goods_region_name") or "",

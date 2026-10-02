@@ -1,5 +1,6 @@
 import asyncio
 import random
+from utils.notice import MAX_PAGES, PageGuard, extract_venue, PublicationWindow
 from typing import Dict, Any, List
 
 from bs4 import BeautifulSoup
@@ -60,7 +61,10 @@ class SejongPac(AsyncCrawlerBase):
 
     async def _fetch_list(self, session) -> List[Dict]:
         items = []
-        for page in self.cfg['pages']:
+        guard = PageGuard('SejongPac')
+        window = PublicationWindow(self.start)
+        seen_links = set()
+        for page in range(1, MAX_PAGES + 1):
             await asyncio.sleep(random.uniform(1.0, 2.0))
             payload = {**self.cfg["params"], "pageIndex": str(page)}
 
@@ -69,17 +73,28 @@ class SejongPac(AsyncCrawlerBase):
                 html = await response.text()
                 soup = BeautifulSoup(html, 'html.parser')
                 rows = soup.select("div.tbl_list > table > tbody > tr")
+                if not guard.accept(a['href'] for row in rows for a in row.select('a[href]')):
+                    break
+                publication_dates = []
                 for row in rows:
                     cols = row.find_all("td")
                     if len(cols) < 6:
                         continue
 
+                    published = cols[2].get_text(' ', strip=True)
+                    pinned = not cols[0].get_text(strip=True).isdigit()
+                    publication_dates.append((published, pinned))
+                    if not window.includes(published):
+                        continue
                     title_tag = cols[1].find("a")
                     if not title_tag or not title_tag.get("href"):
                         continue
                     title = unescape(title_tag.get_text(strip=True))
                     link = self.BASE_URL + title_tag["href"]
 
+                    if link in seen_links:
+                        continue
+                    seen_links.add(link)
                     open_date = cols[3].get_text(strip=True)
                     try:
                         norm = normalize_date_string(open_date)
@@ -87,7 +102,7 @@ class SejongPac(AsyncCrawlerBase):
                     except ValueError as e:
                         logger.debug(f"[SejongPac] 날짜 파싱 실패: {open_date!r} - {e}")
                         continue
-                    if not (self.start <= dt <= self.end):
+                    if dt < self.start:
                         continue
 
                     items.append({
@@ -95,6 +110,10 @@ class SejongPac(AsyncCrawlerBase):
                         "link": link,
                         "open_date": dt,
                     })
+                if window.expired_page(publication_dates):
+                    break
+        else:
+            guard.limit()
         return items
 
     async def _fetch_detail(self, session, item: Dict[str, Any]) -> List[TicketInfo]:
@@ -214,8 +233,8 @@ class SejongPac(AsyncCrawlerBase):
                         category = "클래식"
                     else:
                         category = "기타"
-                elif "공연장소" in line:
-                    venue = line.split("공연장소")[-1].strip(": ： ·").strip()
+                elif extract_venue(line):
+                    venue = extract_venue(line)
                 elif "공연기간" in line or "공연일시" in line:
                     value = extract_performance_period(line)
                     if not value:

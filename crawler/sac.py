@@ -3,6 +3,7 @@ from bs4 import BeautifulSoup
 from datetime import datetime
 from typing import List, Dict
 import logging
+from utils.notice import MAX_PAGES, PageGuard, OpeningWindow
 
 from utils.utils import extract_cast_from_lines, extract_open_round, normalize_date_string, normalize_performance_period, normalize_title
 from models.ticket import TicketInfo
@@ -22,9 +23,10 @@ class SacCrawler(AsyncCrawlerBase):
 
     async def _fetch_list(self, session: aiohttp.ClientSession) -> List[Dict]:
         results = []
-        page = 1
+        guard = PageGuard("SacCrawler")
+        window = OpeningWindow(self.start, self.end, descending=True)
 
-        while True:
+        for page in range(1, MAX_PAGES + 1):
             params = {**self.cfg["params"], "cp": page}
             async with session.get(self.list_url, params=params) as response:
                 response.raise_for_status()
@@ -36,11 +38,22 @@ class SacCrawler(AsyncCrawlerBase):
                 paging = data.get('paging', {})
                 items = paging.get('result', [])
 
-                # 필터링: TICKET_OPEN_DATE가 self.start와 self.end 사이에 있는 항목만
+                if not guard.accept(item.get('SN') for item in items):
+                    break
+
+                page_dates = []
+                for item in items:
+                    try:
+                        page_dates.append(datetime.fromisoformat(item.get('TICKET_OPEN_DATE') or ''))
+                    except ValueError:
+                        page_dates.append(None)
+                if window.beyond(page_dates):
+                    break
+                # 일반오픈이 종료 범위 뒤여도 상세 선예매가 범위 안일 수 있다.
                 items = [
                     item for item in items
                     if item.get("TICKET_OPEN_DATE") and self.start <= datetime.fromisoformat(
-                        item["TICKET_OPEN_DATE"]) <= self.end
+                        item["TICKET_OPEN_DATE"])
                 ]
 
                 results.extend(items)
@@ -49,7 +62,8 @@ class SacCrawler(AsyncCrawlerBase):
                 if page >= total_page:
                     break
 
-                page += 1
+        else:
+            guard.limit()
         return results
 
     async def _fetch_detail(self, session: aiohttp.ClientSession, item: Dict) -> List[TicketInfo]:

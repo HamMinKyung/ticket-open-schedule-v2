@@ -77,7 +77,6 @@ class Settings(BaseSettings):
                 'GENRE_ART_ALL': '뮤지컬/연극',
                 'GENRE_CLA_ALL': '클래식'
             },
-            'pages': [1, 2, 3],
             'detail_selectors': {
                 'title': 'p.tit_consert',
                 'base_box': 'div.box_concert_time',
@@ -95,7 +94,6 @@ class Settings(BaseSettings):
                 "menuNo": "200440",
                 "pageIndex": "1",
             },
-            "pages": [1, 2],
 
         },
         'sac': {
@@ -138,7 +136,6 @@ class Settings(BaseSettings):
                 "searchType": "All",
                 "searchText": "",
             },
-            "pages": [1, 2, 3, 4, 5],
             "headers": {
                 "Referer": "https://ticket.yes24.com/Notice?Gcode=009_215",
                 "Origin": "https://ticket.yes24.com",
@@ -148,7 +145,7 @@ class Settings(BaseSettings):
         },
         'lg_art': {
             'base_url': "https://www.lgart.com",
-            # 티켓 분류의 1페이지만 조회합니다.
+            # 티켓 분류를 유지하며 다음 페이지까지 조회합니다.
             'list_endpoint': "/community/ko/notice",
             "headers": {
                 "User-Agent": USER_AGENT,

@@ -76,8 +76,8 @@ class MelonLockTests(unittest.IsolatedAsyncioTestCase):
         self.assertTrue(self.crawler.locked)
         detail.assert_not_awaited()
 
-    async def test_success_still_fetches_all_configured_pages(self):
-        count = len(self.crawler.cfg["pages"]) * len(self.crawler.cfg["genre_map"])
+    async def test_empty_page_stops_each_genre(self):
+        count = len(self.crawler.cfg["genre_map"])
         session = Session([Response(200) for _ in range(count)])
         self.crawler.locked = True
         self.assertEqual(await self.crawler._fetch_list(session), [])

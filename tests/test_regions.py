@@ -30,6 +30,11 @@ class RegionTests(unittest.TestCase):
         self.assertEqual(resolve_region("", "LIVE IN SEOUL"), "서울")
         self.assertIsNone(resolve_region("", "서울의 별"))
 
+    def test_kspo_aliases_and_explicit_address_priority(self):
+        for venue in ('KSPO DOME', 'kspo dome', '올림픽 체조경기장'):
+            self.assertEqual(resolve_region(venue), '서울')
+        self.assertIsNone(resolve_region('KSPO DOME', address='인천광역시 중구'))
+
     def test_unknown_location_is_not_assumed_to_be_seoul(self):
         self.assertIsNone(resolve_region("미정", "테스트 공연"))
         self.assertEqual(resolve_region("미정", default_region="부산"), "부산")

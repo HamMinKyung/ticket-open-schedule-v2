@@ -3,7 +3,8 @@ import logging
 import re
 from datetime import datetime
 from typing import Any, Dict, List, Tuple
-from urllib.parse import unquote
+from urllib.parse import unquote, urljoin
+from utils.notice import MAX_PAGES, PageGuard, extract_venue, PublicationWindow
 
 import aiohttp
 from bs4 import BeautifulSoup
@@ -60,20 +61,55 @@ class LGArtCrawler(AsyncCrawlerBase):
                 or applied_filter.get("PageIndex") != 1):
             raise ValueError("LG아트센터 티켓 1페이지 필터가 적용되지 않았습니다")
 
-        items: List[Dict[str, Any]] = []
-        for article in data.get("ArticleTitles", []):
-            title = article.get("Title", "")
-            if article.get("CategoryID") != category_id or "티켓" not in title:
-                continue
-            detail_path = article.get("DetailsUrl")
-            if not detail_path:
-                continue
-            items.append({
-                "article_id": article.get("ArticleID"),
-                "title": title,
-                "detail_url": f"{self.base_url}{detail_path}",
-            })
+        items = []
+        seen = set()
+        async for page_data in self._notice_pages(session, data, self.base_url, self.list_url, self.headers, self.start):
+            for article in page_data.get('ArticleTitles', []):
+                title = article.get('Title', '')
+                path = article.get('DetailsUrl')
+                if article.get('CategoryID') != category_id or '티켓' not in title or not path:
+                    continue
+                url = urljoin(self.base_url, path)
+                if url not in seen:
+                    seen.add(url)
+                    items.append({'article_id': article.get('ArticleID'), 'title': title, 'detail_url': url})
         return items
+
+    @staticmethod
+    async def _notice_pages(session, data, base_url, list_url, headers, start):
+        guard = PageGuard(base_url)
+        window = PublicationWindow(start)
+        for _ in range(MAX_PAGES):
+            articles = data.get('ArticleTitles', [])
+            if not guard.accept(article.get('ArticleID') or article.get('DetailsUrl') for article in articles):
+                return
+            dated = [(article.get('CreateDate') or article.get('CreateTime'),
+                      bool(article.get('IsFixed') or article.get('IsHeadline'))) for article in articles]
+            yield {**data, 'ArticleTitles': [article for article in articles
+                   if window.includes(article.get('CreateDate') or article.get('CreateTime'))]}
+            if window.expired_page(dated):
+                return
+            pager = data.get('Pager', {})
+            if not pager.get('HasNextPage'):
+                return
+            current = data.get('Filter', {}).get('PageIndex', 1)
+            next_page = pager.get('NextPageIndex')
+            if not isinstance(next_page, int) or next_page <= current:
+                raise ValueError('공지 페이지 번호가 진행되지 않습니다')
+            filters = {**data['Filter'], 'PageIndex': next_page}
+            async with session.post(base_url + '/api/historyBack/create',
+                    data={'value': json.dumps(filters, ensure_ascii=False)}, headers=headers) as resp:
+                resp.raise_for_status()
+                result = await resp.json()
+            if result.get('Code') != 0 or not result.get('Tag'):
+                raise ValueError('공지 다음 페이지 주소 생성 실패')
+            async with session.get(list_url.split('?')[0], params={'q': unquote(result['Tag'])}, headers=headers) as resp:
+                resp.raise_for_status()
+                data = LGArtCrawler._extract_vue_data(await resp.text(), 'ArticleTitles')
+            applied = data.get('Filter', {})
+            if applied.get('PageIndex') != next_page or applied.get('CategoryID') != filters.get('CategoryID'):
+                raise ValueError('공지 다음 페이지 필터가 적용되지 않았습니다')
+        guard.limit()
 
     async def _fetch_detail(self, session: aiohttp.ClientSession, item: Dict[str, Any]) -> List[TicketInfo]:
         async with session.get(item["detail_url"], headers=self.headers) as resp:
@@ -93,7 +129,7 @@ class LGArtCrawler(AsyncCrawlerBase):
 
         title = self._extract_field(text, "공연명") or raw_title
         title = self._strip_notice_title(title)
-        venue = self._extract_field(text, "공연장소") or self._extract_field(text, "장소") or "LG아트센터 서울"
+        venue = extract_venue(text) or "LG아트센터 서울"
         region = resolve_region(venue, title)
         if not region:
             logger.debug(f"[LGArtCrawler] 지역 필터 제외: title={title!r}, venue={venue!r}")

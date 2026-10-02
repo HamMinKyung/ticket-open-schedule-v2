@@ -19,8 +19,7 @@ logger = logging.getLogger(__name__)
 class CaciCrawler(AsyncCrawlerBase):
     """충무아트센터(중구문화재단) 티켓공지 크롤러.
 
-    사이트 목록의 페이지 링크를 따라가지 않고 목록 URL 자체만 요청하므로 1페이지만
-    수집한다. 상세 공지 하나에서 선예매/일반예매가 모두 발견되면 각각 티켓으로 만든다.
+    티켓공지 분류의 페이지를 순서대로 수집한다. 상세 공지 하나에서 선예매/일반예매가 모두 발견되면 각각 티켓으로 만든다.
     """
 
     def __init__(self, date_range: Tuple[datetime, datetime]):
@@ -38,18 +37,20 @@ class CaciCrawler(AsyncCrawlerBase):
             raise ValueError("충무아트센터 공지 목록 데이터가 없습니다")
         items = []
         seen = set()
-        for article in data["ArticleTitles"]:
-            href = article.get("DetailsUrl")
-            if not href or article.get("CategoryID") != 17:
-                continue
-            url = urljoin(self.cfg["base_url"], href)
-            if url in seen:
-                continue
-            text = article.get("Title", "")
-            if not re.search(r"티켓\s*오픈", text):
-                continue
-            seen.add(url)
-            items.append({"detail_url": url, "title": text})
+        async for page_data in LGArtCrawler._notice_pages(
+                session, data, self.cfg['base_url'], self.list_url, self.headers, self.start):
+            for article in page_data["ArticleTitles"]:
+                href = article.get("DetailsUrl")
+                if not href or article.get("CategoryID") != 17:
+                    continue
+                url = urljoin(self.cfg["base_url"], href)
+                if url in seen:
+                    continue
+                text = article.get("Title", "")
+                if not re.search(r"티켓\s*오픈", text):
+                    continue
+                seen.add(url)
+                items.append({"detail_url": url, "title": text})
         return items
 
     async def _fetch_detail(self, session: aiohttp.ClientSession, item: Dict[str, Any]) -> List[TicketInfo]:
@@ -60,7 +61,7 @@ class CaciCrawler(AsyncCrawlerBase):
         if not article:
             raise ValueError("충무아트센터 상세 공지 데이터가 없습니다")
         soup = BeautifulSoup(article.get("Contents") or "", "html.parser")
-        text = soup.get_text("\n", strip=True)
+        text = LGArtCrawler._content_text(article.get("Contents") or "")
         raw_title = article.get("Title") or item["title"]
         title = raw_title
         title = normalize_title(title)
@@ -81,10 +82,16 @@ class CaciCrawler(AsyncCrawlerBase):
 
     def _extract_open_datetimes(self, text: str) -> List[Tuple[str, datetime]]:
         result = []
-        for line in text.splitlines():
+        lines = text.splitlines()
+        for index, line in enumerate(lines):
             if not ("예매" in line or "오픈" in line) or "기간" in line:
                 continue
-            dt = self._parse_datetime(line)
+            candidate = line
+            if line.rstrip().endswith((':', '：')) and index + 1 < len(lines):
+                following = lines[index + 1]
+                if re.match(r'^\s*\d{4}', following):
+                    candidate += ' ' + following
+            dt = self._parse_datetime(candidate)
             if dt and self.start <= dt <= self.end:
                 label = "선예매" if "선예매" in line else "일반예매" if "일반예매" in line else "티켓오픈"
                 if (label, dt) not in result:

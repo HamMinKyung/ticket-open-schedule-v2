@@ -2,6 +2,7 @@ import re
 import asyncio
 import logging
 import aiohttp
+from utils.notice import MAX_PAGES, PageGuard, PublicationWindow
 from datetime import datetime
 from urllib.parse import parse_qs, urljoin, urlparse
 
@@ -17,7 +18,7 @@ logger = logging.getLogger(__name__)
 
 
 class CharlotteCrawler(AsyncCrawlerBase):
-    """샤롯데씨어터 제목 '티켓오픈' 검색 결과의 첫 페이지만 수집한다."""
+    """샤롯데씨어터 제목 '티켓오픈' 검색 결과를 페이지별로 수집한다."""
 
     def __init__(self, date_range):
         super().__init__(date_range)
@@ -46,24 +47,50 @@ class CharlotteCrawler(AsyncCrawlerBase):
                 await asyncio.sleep(2 ** attempt)
 
     async def _fetch_list(self, session):
-        soup = BeautifulSoup(await self._get_html(session, self.list_url, params=self.cfg['params']), 'html.parser')
         items, seen = [], set()
-        for link in soup.select('tbody td.left a[href]'):
-            title = link.get_text(' ', strip=True)
-            url = urljoin(self.list_url, link['href'])
-            parsed = urlparse(url)
-            seq = parse_qs(parsed.query).get('seq', [''])[0]
-            if (parsed.netloc != urlparse(self.list_url).netloc
-                    or parsed.path != '/customer/notice/view.asp'
-                    or not seq.isdigit() or seq in seen or '티켓오픈' not in title):
-                continue
-            row = link.find_parent('tr').get_text(' ', strip=True)
-            published = re.search(r'\d{4}-\d{2}-\d{2}', row)
-            if not published:
-                continue
-            seen.add(seq)
-            items.append({'title': title, 'detail_url': url,
-                          'published': datetime.strptime(published.group(), '%Y-%m-%d')})
+        guard = PageGuard('CharlotteCrawler')
+        window = PublicationWindow(self.start)
+        for page in range(1, MAX_PAGES + 1):
+            soup = BeautifulSoup(await self._get_html(session, self.list_url,
+                params={**self.cfg['params'], 'page': page}), 'html.parser')
+            if not guard.accept(parse_qs(urlparse(link['href']).query).get('seq', [''])[0]
+                                for link in soup.select('tbody td.left a[href]')):
+                break
+            publication_dates = []
+            for link in soup.select('tbody td.left a[href]'):
+                title = link.get_text(' ', strip=True)
+                url = urljoin(self.list_url, link['href'])
+                parsed = urlparse(url)
+                seq = parse_qs(parsed.query).get('seq', [''])[0]
+                if (parsed.netloc != urlparse(self.list_url).netloc
+                        or parsed.path != '/customer/notice/view.asp'
+                        or not seq.isdigit() or seq in seen or '티켓오픈' not in title):
+                    continue
+                row_tag = link.find_parent('tr')
+                row = row_tag.get_text(' ', strip=True)
+                published = re.search(r'\d{4}-\d{2}-\d{2}', row)
+                if not published:
+                    continue
+                first_cell = row_tag.find('td')
+                pinned = bool(first_cell and ('공지' in first_cell.get_text() or first_cell.find('img')))
+                publication_dates.append((published.group(), pinned))
+                seen.add(seq)
+                if not window.includes(published.group()):
+                    continue
+                items.append({'title': title, 'detail_url': url,
+                              'published': datetime.strptime(published.group(), '%Y-%m-%d')})
+            if window.expired_page(publication_dates):
+                break
+            next_pages = []
+            for link in soup.select('a[href]'):
+                parsed = urlparse(urljoin(self.list_url, link['href']))
+                value = parse_qs(parsed.query).get('page', [''])[0]
+                if parsed.path == urlparse(self.list_url).path and value.isdigit():
+                    next_pages.append(int(value))
+            if not any(value > page for value in next_pages):
+                break
+        else:
+            guard.limit()
         return items
 
     async def _fetch_detail(self, session, item):

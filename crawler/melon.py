@@ -14,6 +14,7 @@ from utils.config import settings
 from models.ticket import TicketInfo
 from utils.utils import clean_cast_text, extract_cast_from_lines, extract_open_round, extract_performance_period, normalize_date_string, normalize_title, resolve_region
 import random
+from utils.notice import MAX_PAGES, PageGuard, extract_venue, OpeningWindow
 
 
 class MelonCrawler(AsyncCrawlerBase):
@@ -50,12 +51,16 @@ class MelonCrawler(AsyncCrawlerBase):
             resp.raise_for_status()
             await resp.text()
         # 장르 코드별·페이지별 리스트 수집
+        seen_notices = set()
         for code, genre_name in self.cfg['genre_map'].items():
-            for page in self.cfg['pages']:
+            guard = PageGuard(f'MelonCrawler/{genre_name}')
+            window = OpeningWindow(self.start, self.end)
+            for page in range(1, MAX_PAGES + 1):
                 payload = {
                     "schGcode": code,
                     "orderType": "2",
-                    "pageIndex": str(page)
+                    # Melon goPage uses a 1-based row offset: 1, 11, 21, ...
+                    "pageIndex": str((page - 1) * 10 + 1)
                 }
                 await asyncio.sleep(random.uniform(1.0, 3.0))
                 headers = self._get_headers()
@@ -67,34 +72,63 @@ class MelonCrawler(AsyncCrawlerBase):
                     html = await resp.text()
                 soup = BeautifulSoup(html, 'html.parser')
 
-                for li in soup.select("ul.list_ticket_cont li"):
+                rows = soup.select("ul.list_ticket_cont li")
+                if not guard.accept(a.get('href') for row in rows for a in row.select('a.tit[href]')):
+                    break
+                page_dates = []
+                for li in rows:
                     title_tag = li.select_one("a.tit")
                     date_tag = li.select_one("span.date")
                     if not title_tag or not date_tag:
+                        page_dates.append(None)
                         continue
+                    notice_url = title_tag.get('href')
+                    if not notice_url or notice_url in seen_notices:
+                        page_dates.append(None)
+                        continue
+                    seen_notices.add(notice_url)
                     raw_date = date_tag.get_text(strip=True)
                     pass_check = "오픈일정 보기" in raw_date
                     open_date = None
+                    detail_html = None
 
                     # 날짜 문구이면서 범위 내 항목만 추가
                     if not pass_check:
                         try:
                             norm = normalize_date_string(raw_date)
                             dt = datetime.strptime(norm, "%Y.%m.%d %H:%M")
-                            if not (self.start <= dt <= self.end):
+                            page_dates.append(dt)
+                            if dt < self.start:
                                 continue
                             open_date = dt
                         except (ValueError, AttributeError) as e:
+                            page_dates.append(None)
                             logger.debug(f"날짜 파싱 실패: {raw_date!r} - {e}")
                             continue
 
+                    if pass_check:
+                        detail_url = f"{self.cfg['base_url']}/csoon/{notice_url.lstrip('./')}"
+                        await asyncio.sleep(random.uniform(1.0, 3.0))
+                        async with session.get(detail_url, headers=self._get_headers()) as resp:
+                            if self._is_locked(resp, f'detail={detail_url}'):
+                                return []
+                            resp.raise_for_status()
+                            detail_html = await resp.text()
+                        openings = self._parse_open_dates(BeautifulSoup(detail_html, 'html.parser'))
+                        page_dates.append(min((dt for _, dt in openings), default=None))
+                        if openings and not any(self.start <= dt <= self.end for _, dt in openings):
+                            continue
                     items.append({
+                        "detail_html": detail_html,
                         "title_tag": title_tag,
                         "pass_date_check": pass_check,
                         "open_date": open_date,
                         "genre": genre_name
                     })
-            # 필터링된 항목만 반환
+                if window.beyond(page_dates):
+                    break
+            else:
+                guard.limit()
         return items
 
     async def _fetch_detail(
@@ -109,13 +143,15 @@ class MelonCrawler(AsyncCrawlerBase):
         href = item['title_tag']['href'].lstrip("./")
         detail_url = f"{cfg['base_url']}/csoon/{href}"
 
-        headers = self._get_headers()
-        await asyncio.sleep(random.uniform(1.0, 3.0))
-        async with session.get(detail_url, headers=headers) as resp:
-            if self._is_locked(resp, f'detail={detail_url}'):
-                return []
-            resp.raise_for_status()
-            html = await resp.text()
+        html = item.get('detail_html')
+        if html is None:
+            headers = self._get_headers()
+            await asyncio.sleep(random.uniform(1.0, 3.0))
+            async with session.get(detail_url, headers=headers) as resp:
+                if self._is_locked(resp, f'detail={detail_url}'):
+                    return []
+                resp.raise_for_status()
+                html = await resp.text()
         soup = BeautifulSoup(html, 'html.parser')
 
         # 기본 정보 파싱
@@ -144,44 +180,19 @@ class MelonCrawler(AsyncCrawlerBase):
         
         tickets: List[TicketInfo] = []
 
-        # “오픈일정 보기”인 경우, 상세 여러 일정 파싱
-        if item['pass_date_check']:
-            for label, od in self._parse_open_dates(soup):
-                if self.start <= od <= self.end:
-                    tickets.append(TicketInfo(
-                        title=normalize_title(title.strip()),
-                        open_datetime=od,
-                        round_info=round_info,
-                        performance_period=performance_period,
-                        cast=cast,
-                        detail_url=detail_url,
-                        category=item['genre'].strip(),
-                        open_type=label.strip(),
-                        venue=venue,
-                        providers={"멜론티켓"},
-                        solo_sale=only_sale,
-                        content=content,
-                        source="멜론티켓",
-                        regions=regions,
-                    ))
-        # “티켓오픈” 한 건만
-        else:
-            tickets.append(TicketInfo(
-                title=normalize_title(title.strip()),
-                open_datetime=item['open_date'],
-                round_info=round_info,
-                performance_period=performance_period,
-                cast=cast,
-                detail_url=detail_url,
-                category=item['genre'].strip(),
-                open_type="티켓오픈".strip(),
-                venue=venue,
-                providers={"멜론티켓"},
-                solo_sale=only_sale,
-                content=content,
-                source="멜론티켓",
-                regions=regions,
-            ))
+        # 상세 일정이 있으면 목록의 단일 날짜보다 우선한다.
+        schedules = self._parse_open_dates(soup)
+        if not schedules and item.get('open_date'):
+            schedules = [('티켓오픈', item['open_date'])]
+        for label, od in schedules:
+            if self.start <= od <= self.end:
+                tickets.append(TicketInfo(
+                    title=normalize_title(title.strip()), open_datetime=od,
+                    round_info=round_info, performance_period=performance_period,
+                    cast=cast, detail_url=detail_url, category=item['genre'].strip(),
+                    open_type=label.strip(), venue=venue, providers={'멜론티켓'},
+                    solo_sale=only_sale, content=content, source='멜론티켓', regions=regions,
+                ))
 
         return tickets
 
@@ -231,21 +242,21 @@ class MelonCrawler(AsyncCrawlerBase):
                         value = lines[idx + 1].strip(":：· ").strip()
                     if value:
                         round_info = value
-                elif "공연 장소" in txt or "공연장소" in txt:
-                    place = txt.split(":")[-1].strip()
+                elif extract_venue(txt):
+                    place = extract_venue(txt)
                 else:
                     performance_period = extract_performance_period(txt) or performance_period
+        if base:
+            place = extract_venue(base.get_text('\n', strip=True)) or place
         return round_info, place, performance_period
 
     @staticmethod
     def _extract_venue_from_content(content: Dict[str, str]) -> str:
         for text in content.values():
             for line in text.splitlines():
-                match = re.search(r"-?\s*공\s*연\s*장\s*소\s*[:：]\s*(.+)", line)
-                if match:
-                    venue = match.group(1).strip(" \t\r\n-·ㆍ")
-                    if venue:
-                        return venue
+                venue = extract_venue(line)
+                if venue:
+                    return venue
                 if re.search(r"(?:공\s*연\s*)?일\s*시", line) and "@" in line:
                     at_match = re.search(r"@\s*([^@\n\r|/]+)", line)
                     if at_match:
@@ -256,16 +267,17 @@ class MelonCrawler(AsyncCrawlerBase):
 
     def _parse_open_dates(self, soup: BeautifulSoup) -> List[Tuple[str, datetime]]:
         results: List[Tuple[str, datetime]] = []
-        for dt_tag, dd_tag in zip(
-                soup.select("dt.tit_type"),
-                soup.select("dd.txt_date")
-        ):
+        for dt_tag in soup.select("dl.schedule_info dt.tit_type"):
+            dd_tag = dt_tag.find_next_sibling()
+            if dd_tag is None or dd_tag.name != 'dd' or 'txt_date' not in dd_tag.get('class', []):
+                continue
             label = dt_tag.get_text(strip=True).rstrip(":")
-            raw = dd_tag.get_text(strip=True).split(":", 1)[-1].strip()
+            raw = dd_tag.get_text(" ", strip=True).lstrip(":： ")
             try:
                 norm = normalize_date_string(raw)
                 od = datetime.strptime(norm, "%Y년 %m월 %d일 %H:%M")
-                results.append((label, od))
+                if (label, od) not in results:
+                    results.append((label, od))
             except (ValueError, AttributeError) as e:
                 logger.debug(f"오픈일정 날짜 파싱 실패: {e}")
                 continue

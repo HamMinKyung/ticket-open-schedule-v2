@@ -52,13 +52,14 @@ class CharlotteTests(unittest.IsolatedAsyncioTestCase):
             self.assertEqual(await self.crawler._get_html(session, 'https://example.com'), 'ok')
         self.assertEqual(session.get.call_count, 2)
 
-    async def test_live_list_fixture_only_first_search_page(self):
+    async def test_live_list_fixture_repeated_page_stops(self):
         session = MagicMock()
+        self.crawler.start = datetime(2026, 8, 7)
         session.get.return_value = response((self.fixtures / 'charlotte_list.html').read_text(encoding='utf-8'))
         items = await self.crawler._fetch_list(session)
-        self.assertEqual(len(items), 10)
-        session.get.assert_called_once()
-        self.assertEqual(session.get.call_args.kwargs['params'],
+        self.assertEqual(len(items), 1)
+        self.assertEqual(session.get.call_count, 2)
+        self.assertEqual(session.get.call_args_list[0].kwargs['params'],
                          {'page': 1, 'schType': 'TITLE', 'schWord': '티켓오픈'})
         self.assertEqual(items[0]['published'], datetime(2026, 8, 7))
         self.assertIn('seq=4201', items[0]['detail_url'])
@@ -84,7 +85,7 @@ class CharlotteTests(unittest.IsolatedAsyncioTestCase):
 
     async def test_non_ticket_notice_and_duplicate_excluded(self):
         session = MagicMock()
-        row = '<tr><td class="left"><a href="view.asp?seq=1">공연 티켓오픈</a></td><td>2026-09-01</td></tr>'
+        row = '<tr><td class="left"><a href="view.asp?seq=1">공연 티켓오픈</a></td><td>2026-01-01</td></tr>'
         session.get.return_value = response('<table><tbody>' + row * 2 + row.replace('seq=1', 'seq=2').replace('공연 티켓오픈', '점검 안내') + '</tbody></table>')
         self.assertEqual(len(await self.crawler._fetch_list(session)), 1)
 

@@ -15,7 +15,7 @@ def response(data):
 
 
 class LGArtFilterTests(unittest.IsolatedAsyncioTestCase):
-    async def test_ticket_button_filter_only_collects_first_page(self):
+    async def test_ticket_button_filter_follows_next_page(self):
         crawler = LGArtCrawler((datetime(2026, 1, 1), datetime(2027, 1, 1)))
         session = MagicMock()
         session.get.side_effect = [response({
@@ -29,15 +29,17 @@ class LGArtFilterTests(unittest.IsolatedAsyncioTestCase):
                 'CategoryID': 42, 'ArticleID': 123, 'Title': '[티켓오픈] 공연',
                 'DetailsUrl': '/community/ko/notice/123',
             }],
-        })]
+        }), response({'Filter': {'CategoryID': 42, 'PageIndex': 2},
+            'Pager': {'HasNextPage': False},
+            'ArticleTitles': [{'CategoryID': 42, 'ArticleID': 124, 'Title': '[티켓오픈] 다음 공연', 'DetailsUrl': '/community/ko/notice/124'}]})]
         session.post.return_value = response({'Code': 0, 'Tag': 'fresh-token%3d'})
         items = await crawler._fetch_list(session)
-        self.assertEqual(len(items), 1)
-        self.assertEqual(session.get.call_count, 2)
-        session.post.assert_called_once()
+        self.assertEqual(len(items), 2)
+        self.assertEqual(session.get.call_count, 3)
+        self.assertEqual(session.post.call_count, 2)
         sent = json.loads(session.post.call_args.kwargs['data']['value'])
         self.assertEqual(sent['CategoryID'], 42)
-        self.assertEqual(sent['PageIndex'], 1)
+        self.assertEqual(sent['PageIndex'], 2)
         self.assertEqual(session.get.call_args.kwargs['params'], {'q': 'fresh-token='})
         self.assertNotIn('?', crawler.list_url)
 

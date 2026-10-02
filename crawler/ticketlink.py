@@ -4,6 +4,7 @@ import aiohttp
 from bs4 import BeautifulSoup
 import re
 import logging
+from utils.notice import MAX_PAGES, PageGuard, extract_venue, extract_labeled_openings, OpeningWindow
 
 from crawler.base import AsyncCrawlerBase
 from models.ticket import TicketInfo
@@ -22,9 +23,11 @@ class TicketLinkCrawler(AsyncCrawlerBase):
 
     async def _fetch_list(self, session: aiohttp.ClientSession) -> List[Dict]:
         results: List[Dict] = []
-        page = 1
+        guard = PageGuard("TicketLinkCrawler")
+        window = OpeningWindow(self.start, self.end)
+        seen = set()
         logger.debug("[TicketLinkCrawler] Start fetching list.")
-        while True:
+        for page in range(1, MAX_PAGES + 1):
             logger.debug(f"[TicketLinkCrawler] Fetching page {page}.")
             params = {**self.cfg["params"], "page": page}
             async with session.get(self.list_url, params=params, headers=self.headers) as res:
@@ -42,25 +45,39 @@ class TicketLinkCrawler(AsyncCrawlerBase):
                     logger.debug("[TicketLinkCrawler] No more items found. Stopping.")
                     break
 
+                if not guard.accept(item.get('noticeId') for item in items):
+                    break
+                page_dates = []
                 for item in items:
+                    if item.get('noticeId') in seen:
+                        continue
+                    seen.add(item.get('noticeId'))
                     open_date_ts = item.get("ticketOpenDatetime")
                     if not open_date_ts:
+                        page_dates.append(None)
                         continue
 
                     open_time = self._parse_open_datetime(open_date_ts)
+                    page_dates.append(open_time)
                     if open_time is None:
                         logger.debug(f"[TicketLinkCrawler] timestamp 파싱 실패: noticeId={item.get('noticeId')} - {open_date_ts!r}")
                         continue
-                    if self.start <= open_time <= self.end:
+                    if open_time >= self.start:
                         results.append(item)
 
+                # Body schedules on the boundary page are still examined before stopping.
+                body_dates = [dt for item in items for _, dt in extract_labeled_openings(
+                    BeautifulSoup(item.get('content') or '', 'html.parser').get_text('\n', strip=True))]
+                if window.beyond(page_dates) and not any(self.start <= dt <= self.end for dt in body_dates):
+                    break
                 paging_info = result_data.get("paging", {})
                 current_page = paging_info.get("currentPage", 1)
                 total_pages = paging_info.get("pageCount", 1)
 
                 if current_page >= total_pages:
                     break
-                page += 1
+        else:
+            guard.limit()
         logger.debug(f"[TicketLinkCrawler] Finished fetching list. Total items collected: {len(results)}")
         return results
 
@@ -85,7 +102,12 @@ class TicketLinkCrawler(AsyncCrawlerBase):
         title_text = re.sub(r"[\u200b-\u200f\u202a-\u202e]", "", title_text)
         is_exclusive = "단독판매" in title_text or "단독 판매" in title_text
 
-        venue = notice.get("placeName") or item.get("placeName") or "-"
+        content_html = notice.get("content") or ""
+        body_soup = BeautifulSoup(content_html, "html.parser")
+        body_text = body_soup.get_text("\n", strip=True)
+        venue = notice.get("placeName") or item.get("placeName")
+        if not venue or venue == '-':
+            venue = extract_venue(body_text) or '-'
         region = resolve_region(venue, title_text)
 
         logger.debug(f"[TicketLinkCrawler] 지역 정보 org={venue}, conversion={region}")
@@ -98,9 +120,6 @@ class TicketLinkCrawler(AsyncCrawlerBase):
         if category == "-":
             category = notice.get("noticeCategoryName") or "티켓오픈"
 
-        content_html = notice.get("content") or ""
-        body_soup = BeautifulSoup(content_html, "html.parser")
-        body_text = body_soup.get_text("\n", strip=True)
         period = self._pick_performance_period(body_text) or "-"
         open_round = extract_open_round_period(body_text) or extract_open_round(title_text, body_text) or "-"
 
@@ -147,7 +166,11 @@ class TicketLinkCrawler(AsyncCrawlerBase):
             source="티켓링크",
             regions=region,
         )
-        return [ticket]
+        schedules = extract_labeled_openings(body_text)
+        if not any(dt == open_dt and '선' not in label for label, dt in schedules):
+            schedules.append((open_type, open_dt))
+        return [ticket.model_copy(update={'open_datetime': dt, 'open_type': label})
+                for label, dt in schedules if self.start <= dt <= self.end]
 
     @staticmethod
     def _parse_open_datetime(raw) -> datetime | None:
