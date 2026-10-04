@@ -8,11 +8,11 @@ ACTION:DISPLAY
 DESCRIPTION:Reminder
 END:VALARM
 CATEGORIES:티켓오픈
-DESCRIPTION:놀티켓 이충주
+DESCRIPTION:YES24\, 티켓링크\, 놀티켓 김준수\, 김재범\, 최재웅
 DTEND:20261007T053000Z
-LOCATION:NOL 씨어터 대학로 우리투자증권홀
+LOCATION:홍익대 대학로 아트센터 대극장
 DTSTART:20261007T050000Z
-SUMMARY:티켓오픈 뮤지컬 〈콰이어 오브 맨〉
-UID:09a24fe8-537c-4eff-9583-8e9dde767419@09a2.org
+SUMMARY:티켓오픈 뮤지컬 〈곤 투모로우〉 10주년 기념 공연
+UID:64d072be-26fc-4eaa-b82a-75d5d45be537@64d0.org
 END:VEVENT
 END:VCALENDAR
